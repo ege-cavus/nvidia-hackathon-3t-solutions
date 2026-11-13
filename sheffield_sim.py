@@ -20,6 +20,17 @@ from knowledge_base import NODE_HISTORICAL_PROBABILITIES
 from state_schema import DispatchCommand, EMERGENCY_HUBS, HERO_CAMERAS, get_initial_city_state, is_unit_available, make_incident, required_agencies_for_incident
 
 
+def effectiveness_score_breakdown(metrics):
+    """Explain the current game score without changing its existing weights."""
+    components = {"baseline": 100.0, "sla_miss_penalty": -5.0 * metrics["sla_missed_count"],
+                  "spillover_penalty": -3.0 * metrics["spillovers_occurred"],
+                  "resolution_reward": float(metrics["incidents_resolved"])}
+    raw = sum(components.values())
+    return {"components": components, "unclamped_score": raw,
+            "overall_score": max(0.0, min(100.0, raw)),
+            "limitations": "Placeholder game weights; exposure, closure duration and resource use are diagnostic, not scored yet"}
+
+
 def _distance(a, b):
     lat1, lat2 = math.radians(a["lat"]), math.radians(b["lat"])
     dlat = lat2 - lat1
@@ -502,7 +513,7 @@ class SheffieldSim:
         if spawn:
             self._spawn()
         metrics = self.state["effectiveness_metrics"]
-        metrics["overall_score"] = max(0.0, min(100.0, 100 - 5*metrics["sla_missed_count"] - 3*metrics["spillovers_occurred"] + metrics["incidents_resolved"]))
+        metrics["overall_score"] = effectiveness_score_breakdown(metrics)["overall_score"]
         return self.state
 
     def _spawn(self):
@@ -556,14 +567,17 @@ def run_park_square_flood_demo(graph=None, response_delay=0, ticks=60):
     This tests physics; it is not an AI benchmark. Tick rates, work and staging
     assumptions are game rules. No Cosmos inference/generation is performed.
     """
-    if type(response_delay) is not int or response_delay < 0 or type(ticks) is not int or ticks < 1:
-        raise ValueError("Response delay must be nonnegative and ticks positive")
+    if (response_delay is not None and (type(response_delay) is not int or response_delay < 0)) or type(ticks) is not int or ticks < 1:
+        raise ValueError("Response delay must be nonnegative or None (no dispatch), and ticks positive")
     sim = SheffieldSim(graph=graph)
     incident = sim.start_park_square_flood()
     trace = []
+    busy_ticks = {key: 0 for key in sim.state["resource_db"]}
     for _ in range(ticks):
         if sim.state["tick"] == response_delay:
             sim.dispatch("CAM_08", ["FIRE_1", "POL_2"], controller="HUMAN")
+        for key, unit in sim.state["resource_db"].items():
+            busy_ticks[key] += int(not is_unit_available(unit))
         sim.tick(spawn=False)
         trace.append({"tick": sim.state["tick"], "stage": incident["stage"],
                       "severity": incident["severity"], "water_level": incident["water_level"],
@@ -573,7 +587,30 @@ def run_park_square_flood_demo(graph=None, response_delay=0, ticks=60):
     return {"routing": sim.state["routing"], "response_delay_ticks": response_delay,
             "staging": incident["staging_location"], "stage_history": incident["stage_history"],
             "effectiveness_metrics": sim.state["effectiveness_metrics"],
+            "score_breakdown": effectiveness_score_breakdown(sim.state["effectiveness_metrics"]),
+            "outcomes": {"resolved_tick": next((e["tick"] for e in incident["stage_history"] if e["stage"] == "CLEARED"), None),
+                         "effective_response_tick": incident["response_ticks"],
+                         "road_closed_ticks": sum(int(t["road_blocked"]) for t in trace),
+                         "trapped_vehicle_ticks": sum(t["stage"] == "VEHICLES_TRAPPED" for t in trace),
+                         "intensity_tick_exposure": sum(t["water_level"] for t in trace),
+                         "unit_busy_ticks": busy_ticks, "final_status": incident["status"]},
             "visual_observation": incident["visual_observation"], "trace": trace}
+
+
+def compare_park_square_responses(graph=None, ticks=60):
+    """Same environment/horizon, four scripted policies; no models or footage."""
+    if graph is None:
+        graph, _ = load_sheffield_graph(strict=True)
+    cases = []
+    for label, delay in (("prompt", 0), ("delay_5", 5), ("delay_15", 15), ("no_response", None)):
+        result = run_park_square_flood_demo(graph, delay, ticks)
+        cases.append({"case": label, "dispatch_delay_ticks": delay,
+                      "score_breakdown": result["score_breakdown"], "outcomes": result["outcomes"],
+                      "effectiveness_metrics": result["effectiveness_metrics"]})
+    return {"comparison_type": "SCRIPTED_RESPONSE_NOT_AI_BENCHMARK", "horizon_ticks": ticks,
+            "tick_seconds": 60, "same_graph_and_incident": True,
+            "cosmos_required": False, "cases": cases,
+            "sampling": "Incident exposure and closure durations use end-of-tick snapshots; unit busy ticks count each occupied tick interval"}
 
 
 if __name__ == "__main__":
@@ -582,6 +619,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-osm", action="store_true")
     parser.add_argument("--cosmos-manifest", action="store_true", help="Print the four stage clip specifications; does not generate video")
     parser.add_argument("--cosmos-reference", type=Path, help="Local Park Square reference frame for the manifest")
+    parser.add_argument("--compare-flood", action="store_true", help="Compare prompt, delayed and absent scripted responses without Cosmos")
     parser.add_argument("--flood-demo", action="store_true", help="Run staged Park Square flood with scripted Fire/Police response")
     parser.add_argument("--response-delay", type=int, default=0, help="Dispatch delay in ticks for --flood-demo")
     parser.add_argument("--road-report", type=Path, help="Write real-OSM camera/station and round-trip verification JSON")
@@ -591,6 +629,12 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if args.ticks < 0 or args.response_delay < 0:
         parser.error("Ticks and response delay must be nonnegative")
+    if args.compare_flood:
+        if args.ticks < 1 or args.road_report or args.flood_demo:
+            parser.error("--compare-flood needs positive --ticks and cannot combine with --flood-demo/--road-report")
+        graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
+        print(json.dumps(compare_park_square_responses(graph, args.ticks), indent=2))
+        raise SystemExit(0)
     if args.flood_demo:
         if args.ticks < 1 or args.road_report:
             parser.error("--flood-demo requires positive --ticks and cannot combine with --road-report")
