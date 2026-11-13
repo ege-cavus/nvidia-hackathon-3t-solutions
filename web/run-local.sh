@@ -16,6 +16,6 @@ fi
 health=$(curl -fsS --max-time 5 localhost:8080/ui/health) || { echo "Spark API not answering. On the Spark: tmux attach -t suru"; exit 1; }
 echo "backend: $health"
 
-echo "dashboard: http://localhost:$PORT   (Ctrl-C stops the web server; the tunnel keeps running: pkill -f 'L 8080:localhost:8080')"
-(sleep 1; open "http://localhost:$PORT/?api=http://localhost:8080" 2>/dev/null || true) &
+echo "console: http://localhost:$PORT/console/  dashboard: http://localhost:$PORT   (Ctrl-C stops the web server; the tunnel keeps running: pkill -f 'L 8080:localhost:8080')"
+(sleep 1; open "http://localhost:$PORT/console/" 2>/dev/null || true) &
 exec python3 -m http.server "$PORT" --bind 127.0.0.1

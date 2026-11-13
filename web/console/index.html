@@ -1,0 +1,1949 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SURU 999 Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&family=Newsreader:opsz,wght@6..72,500;6..72,700&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+/* One page, two views: the dispatch console, and the phone brief (?brief=INC-…).
+   Every value from the backend or a model is rendered as text (via h()), never as HTML.
+   Colour roles: --accent (blue-green) = selection, primary action, live; status colours = outcome only;
+   agency colours = which agency only. */
+:root {
+  color-scheme: dark;
+  --ground: #08161d; --panel: #0d1f28; --panel-2: #122a35; --line: #1d3743; --line-2: #2a4a58;
+  --ink: #eaf2f5; --ink-2: #b6c8cf; --mute: #7d97a2;
+  --accent: #34c3b0; --accent-ink: #052620; --accent-soft: rgba(52, 195, 176, 0.14);
+  --ok: #4cc38a; --warn: #f2b33d; --bad: #ff5f61;
+  --police: #3b7cf4; --ambulance: #35b376; --fire: #ec5b56; --shared: #9a6ad6; --cr: #e6edf0; --rules: #7d97a2;
+  --r: 8px; --font: "Overpass", "Segoe UI", system-ui, sans-serif; --mono: "Overpass Mono", ui-monospace, monospace; --serif: "Newsreader", Georgia, serif;
+  --head-h: 52px; --band-h: 122px; --foot-h: 26px; --col-l: 300px; --col-r: 390px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--ground); color: var(--ink); font: 400 14px/1.45 var(--font); font-variant-numeric: tabular-nums; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+* { scrollbar-color: var(--line-2) transparent; scrollbar-width: thin; }
+[hidden] { display: none !important; }
+h1, h2, h3, h4, p, ol, ul, dl, figure { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+.mono { font-family: var(--mono); font-size: 0.92em; }
+.code { font-family: var(--mono); font-size: 12px; color: var(--mute); }
+.muted { color: var(--mute); } .small { font-size: 12.5px; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--mute); font-weight: 700; }
+.empty { color: var(--mute); padding: 14px; border: 1px dashed var(--line-2); border-radius: var(--r); }
+
+.btn { border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink); padding: 6px 12px; border-radius: var(--r); cursor: pointer; font-weight: 600; font-size: 13.5px; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.small { padding: 3px 9px; font-size: 12.5px; }
+.btn.ghost { background: transparent; }
+.btn.danger { border-color: var(--bad); color: var(--bad); background: transparent; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.link { background: none; border: 0; padding: 0; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; font-weight: 600; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
+.seg button { border: 0; background: transparent; padding: 4px 11px; font-weight: 700; font-size: 12.5px; cursor: pointer; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.seg button:disabled { opacity: 0.4; cursor: not-allowed; }
+kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--line-2); border-radius: 3px; padding: 0 4px; color: var(--mute); }
+
+/* Header */
+.topbar { height: var(--head-h); display: flex; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.brand strong { font-size: 20px; font-weight: 800; letter-spacing: 0.05em; }
+.brand span { color: var(--ink-2); }
+.clock { font: 600 16px var(--mono); }
+.pill { font-size: 12px; font-weight: 700; padding: 4px 11px; border-radius: 99px; border: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mute); }
+.pill.ok .dot { background: var(--ok); } .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.bad .dot { background: var(--bad); }
+.pill.sim { color: var(--warn); border-color: rgba(242, 179, 61, 0.5); letter-spacing: 0.08em; font-size: 11px; }
+.actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* Needs-action strip */
+.alerts { display: flex; align-items: center; gap: 10px; padding: 5px 18px; background: #1c1710; border-bottom: 1px solid rgba(242, 179, 61, 0.4); font-size: 13px; overflow-x: auto; white-space: nowrap; }
+.alerts > b { color: var(--warn); }
+.alert { display: inline-flex; align-items: center; gap: 6px; padding: 1px 3px 1px 9px; border: 1px solid var(--line-2); border-radius: var(--r); }
+.alert.bad { border-color: rgba(255, 95, 97, 0.6); }
+
+/* Sheffield success matrix */
+.band { height: var(--band-h); display: grid; grid-template-columns: 300px minmax(0, 1fr); border-bottom: 1px solid var(--line); background: var(--panel); }
+.city { padding: 10px 18px; border-right: 1px solid var(--line); display: grid; align-content: center; gap: 2px; cursor: help; }
+.city-top { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+.city-value { font-size: 38px; font-weight: 800; line-height: 1; }
+.tone-good { color: var(--ok); } .tone-warn { color: var(--warn); } .tone-bad { color: var(--bad); }
+.delta { font-size: 13px; font-weight: 700; } .delta.up { color: var(--ok); } .delta.down { color: var(--bad); }
+.city-sub { font-size: 12.5px; color: var(--ink-2); }
+.matrix-wrap { padding: 6px 18px; overflow: hidden; display: grid; align-content: center; }
+table.matrix { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.matrix th { text-align: right; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mute); font-weight: 700; padding: 0 10px 3px; white-space: nowrap; }
+table.matrix th:first-child, table.matrix td:first-child { text-align: left; padding-left: 0; }
+table.matrix td { text-align: right; padding: 3px 10px; font-weight: 700; white-space: nowrap; }
+table.matrix tr + tr td { border-top: 1px solid var(--line); }
+.ag-name { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
+.ag-name svg { width: 22px; height: 22px; }
+.bar { display: inline-block; width: 46px; height: 5px; border-radius: 3px; background: var(--line-2); vertical-align: middle; margin-right: 7px; overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: 3px; }
+
+/* Three-column wall */
+.wall { display: grid; grid-template-columns: var(--col-l) minmax(0, 1fr) var(--col-r); height: calc(100vh - var(--head-h) - var(--band-h) - var(--foot-h) - var(--alerts-h, 0px)); min-height: 520px; }
+.side { overflow-y: auto; padding: 12px 14px; border-right: 1px solid var(--line); }
+.rail { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.chips button { border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); border-radius: 99px; padding: 1px 10px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.chips button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+.card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; width: 100%; text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 9px 11px; margin-bottom: 7px; cursor: pointer; color: var(--ink); }
+.card:hover { border-color: var(--line-2); }
+.card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.card-top { display: flex; align-items: center; gap: 8px; }
+.sev-badge { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 12px; flex: none; color: #08161d; }
+.card-cat { font-size: 15px; font-weight: 800; line-height: 1.2; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-meta { font-size: 12.5px; color: var(--ink-2); padding-left: 30px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-id { display: none; }
+.status { font-size: 11.5px; font-weight: 700; padding: 0 8px; border-radius: 99px; border: 1px solid; white-space: nowrap; }
+.status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); } .status.live { color: var(--accent); } .status.muted { color: var(--mute); border-color: var(--line-2); }
+.stage { font-size: 12.5px; color: var(--accent); font-weight: 700; display: flex; align-items: center; gap: 6px; padding-left: 30px; }
+.stage::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.3; } }
+.timer.amber { color: var(--warn); } .timer.red { color: var(--bad); font-weight: 700; }
+.fold { margin-top: 10px; }
+.fold summary { cursor: pointer; color: var(--ink-2); font-weight: 600; font-size: 13px; padding: 5px 0; }
+.fold .card { opacity: 0.75; }
+
+/* Map */
+.centre { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.mapwrap { position: relative; flex: 1 1 auto; min-height: 220px; }
+#map { position: absolute; inset: 0; }
+.map-fallback { position: absolute; inset: 0; display: grid; place-items: center; color: var(--mute); padding: 24px; text-align: center; }
+.maplibregl-map { font-family: var(--font); }
+.maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--panel) !important; color: var(--ink-2); }
+.maplibregl-ctrl-attrib a { color: var(--ink); }
+.maplibregl-ctrl-group { background: var(--panel); border: 1px solid var(--line-2); }
+.maplibregl-ctrl-group button + button { border-top-color: var(--line-2); }
+.maplibregl-ctrl-icon { filter: invert(0.85); }
+.map-ctrl { position: absolute; left: 12px; top: 12px; z-index: 2; background: var(--panel); }
+.legend { position: absolute; right: 12px; bottom: 30px; z-index: 2; padding: 4px 10px; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r); font-size: 12px; color: var(--ink-2); }
+.legend summary { cursor: pointer; font-weight: 700; color: var(--ink); }
+.legend ul { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
+.legend li { display: flex; align-items: center; gap: 8px; }
+.legend i { display: inline-block; flex: none; }
+.k-inc { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); border: 2px solid var(--ink); }
+.k-merged { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-2); }
+.k-station { width: 16px; height: 16px; border-radius: 50%; background: var(--police); border: 2px solid var(--ink); }
+.k-line { width: 18px; height: 3px; background: var(--fire); }
+.k-cordon { width: 18px; height: 0; border-top: 2px dashed var(--ink-2); }
+.mk-inc { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13px; color: #08161d; border: 2.5px solid var(--ink); cursor: pointer; padding: 0; }
+.mk-inc.selected { box-shadow: 0 0 0 3px var(--accent); }
+.mk-inc.live { animation: ring 1.4s ease-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(52, 195, 176, 0.75); } 100% { box-shadow: 0 0 0 14px rgba(52, 195, 176, 0); } }
+.mk-merged { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink-2); background: var(--ground); cursor: pointer; }
+.mk-st { position: relative; width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.9); cursor: default; }
+.mk-st svg { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); }
+.mk-st.empty { opacity: 0.4; }
+.line-label { font-size: 11.5px; font-weight: 700; padding: 0 6px; border-radius: 4px; background: var(--panel); border: 1px solid var(--c); color: var(--ink); white-space: nowrap; pointer-events: none; }
+.tip .maplibregl-popup-content { background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); padding: 5px 9px; font-size: 12.5px; border-radius: var(--r); }
+.tip .maplibregl-popup-tip { display: none; }
+
+/* Drawer */
+.drawer { flex: 0 0 auto; border-top: 1px solid var(--line); padding: 9px 16px; background: var(--panel); }
+body.has-selection .drawer { flex-basis: 50%; display: flex; flex-direction: column; min-height: 0; padding-bottom: 0; }
+.drawer > .empty { border: 0; padding: 2px 0; }
+.d-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.d-head h2 { font-size: 16px; font-weight: 800; }
+.d-actions { margin-left: auto; display: flex; gap: 6px; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-top: 6px; flex-wrap: wrap; }
+.tabs [role="tab"] { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--mute); padding: 5px 11px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.tabs [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.d-body { overflow-y: auto; padding: 10px 0; min-height: 0; flex: 1; }
+.sec { margin-bottom: 14px; }
+.sec h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--mute); margin-bottom: 7px; }
+.eval-head { font-size: 17px; font-weight: 800; }
+.score { display: flex; gap: 10px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
+.grade { font-weight: 800; font-size: 17px; }
+.two { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th { text-align: left; color: var(--mute); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.data td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.data .num { text-align: right; }
+.table-wrap { overflow-x: auto; }
+.gap { border: 1px solid rgba(255, 95, 97, 0.55); border-radius: var(--r); padding: 7px 11px; margin-top: 10px; }
+.gap h3 { color: var(--bad); }
+.plain { padding-left: 18px; }
+.order { display: grid; grid-template-columns: 8px auto 1fr; gap: 8px; align-items: baseline; padding: 3px 0; }
+.order i { width: 7px; height: 7px; border-radius: 50%; }
+.chip-ag { display: inline-block; font-size: 11.5px; font-weight: 700; color: var(--c); border: 1px solid var(--c); padding: 0 6px; border-radius: 4px; white-space: nowrap; }
+.by { font-size: 10.5px; font-weight: 700; padding: 0 5px; border-radius: 3px; border: 1px solid var(--line-2); color: var(--ink-2); white-space: nowrap; }
+.by.model { color: var(--ok); border-color: var(--ok); }
+.by.fallback { color: #1c1408; background: var(--warn); border-color: var(--warn); }
+.by.mock, .by.rules { border-style: dashed; }
+.agent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.agent-card { border: 1px solid var(--line); border-radius: var(--r); padding: 9px 11px; display: grid; gap: 6px; align-content: start; }
+.agent-card header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.agent-card h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--mute); margin-top: 6px; }
+.agent-card ul { padding-left: 18px; color: var(--ink-2); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; }
+.kv dt { color: var(--mute); } .kv dd { margin: 0; }
+.agent-chip { font-size: 11.5px; font-weight: 800; padding: 0 7px; border-radius: 4px; background: var(--c); color: #08161d; white-space: nowrap; }
+.conflict { border: 1px solid var(--line); border-radius: var(--r); padding: 7px 11px; margin-bottom: 7px; display: grid; gap: 3px; }
+.conflict header { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.conflict.hard { border-color: rgba(255, 95, 97, 0.5); }
+.conflict.sev-high { border-color: rgba(255, 95, 97, 0.5); } .conflict.sev-medium { border-color: rgba(242, 179, 61, 0.5); }
+.raw summary, .more > summary { cursor: pointer; font-size: 12.5px; color: var(--mute); font-weight: 600; }
+.more > summary:hover, .raw summary:hover { color: var(--ink-2); }
+.raw pre { font-family: var(--mono); font-size: 11.5px; background: var(--ground); border: 1px solid var(--line); border-radius: var(--r); padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+.more { margin-top: 3px; } .score .more { flex-basis: 100%; }
+.pipeline { list-style: none; padding: 0; display: grid; gap: 3px; }
+.pipeline li { display: grid; grid-template-columns: 16px 1fr auto; gap: 8px; align-items: center; color: var(--mute); }
+.pipeline li.done { color: var(--ink); } .pipeline li.now { color: var(--accent); font-weight: 700; }
+.pipeline li i { width: 9px; height: 9px; border-radius: 50%; border: 2px solid currentColor; }
+.pipeline li.done i { background: var(--accent); border-color: var(--accent); }
+.log { display: grid; grid-template-columns: 52px 1fr; gap: 3px 12px; }
+.log time { font-family: var(--mono); font-size: 12px; color: var(--mute); padding-top: 1px; }
+.log .flag { color: var(--bad); }
+
+/* Agents at work */
+.agents { padding: 12px 16px 6px; border-bottom: 1px solid var(--line); }
+.agents-head { display: flex; align-items: center; gap: 8px; }
+.agents-head .inc { font-size: 12.5px; color: var(--ink-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agents-head .inc b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+#net { display: block; width: 100%; height: auto; margin-top: 4px; }
+.net-edge { fill: none; stroke: var(--line-2); stroke-width: 1.5; }
+.net-edge.on { stroke-opacity: 0.85; stroke-width: 2; }
+.net-edge.waiting { stroke-dasharray: 3 4; }
+.net-edge.soft { stroke: var(--warn); stroke-dasharray: 4 4; stroke-width: 2; }
+.net-node { cursor: pointer; }
+.net-node .disc { stroke-width: 2; }
+.net-node.idle { opacity: 0.3; filter: grayscale(1); }
+.net-node.picked .disc { stroke-width: 3.5; }
+.net-node .working { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 6; transform-box: fill-box; transform-origin: center; animation: spin 2.4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.net-node .fb { fill: none; stroke: var(--warn); stroke-width: 2; stroke-dasharray: 3 3; }
+.net-name { font: 800 11.5px var(--font); fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+.net-sub { font: 700 10.5px var(--font); fill: var(--ink-2); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+.net-sub.ok { fill: var(--ok); } .net-sub.warn { fill: var(--warn); } .net-sub.bad { fill: var(--bad); }
+.pk { pointer-events: none; }
+.net-detail { font-size: 12.5px; color: var(--ink-2); min-height: 2.8em; margin-top: 2px; }
+.net-empty { fill: var(--mute); font: 600 12px var(--font); }
+
+/* Decision log: closed by default, one latest line visible */
+.log-panel { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.log-toggle { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); padding: 10px 16px; cursor: pointer; text-align: left; color: var(--ink); }
+.log-toggle:hover { background: var(--panel-2); }
+.log-toggle .latest { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-toggle .chev { color: var(--mute); transition: transform 150ms; }
+.log-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+.log-body { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.log-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-2); padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.log-filters label { display: flex; gap: 5px; align-items: center; cursor: pointer; }
+.log-filters input { accent-color: var(--accent); }
+.toggle { font-size: 11.5px; font-weight: 700; padding: 0 7px; border-radius: 4px; cursor: pointer; border: 1px solid var(--c); background: transparent; color: var(--c); }
+.toggle[aria-pressed="false"] { color: var(--mute); border-color: var(--line-2); text-decoration: line-through; }
+.feed { list-style: none; padding: 0 8px; margin: 0; overflow-y: auto; flex: 1; }
+.ev { border-bottom: 1px solid var(--line); }
+.ev.hl { background: var(--accent-soft); }
+.ev-row { display: grid; gap: 2px; width: 100%; text-align: left; background: none; border: 0; padding: 7px 8px; cursor: pointer; color: var(--ink); }
+.ev-row:hover { background: var(--panel-2); }
+.ev-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; }
+.ev-top time { color: var(--mute); font-family: var(--mono); }
+.ev-type { font-weight: 800; letter-spacing: 0.04em; color: var(--ink-2); }
+.ev-type.bad { color: var(--bad); } .ev-type.warn { color: var(--warn); } .ev-type.ok { color: var(--ok); }
+.ev-inc { margin-left: auto; color: var(--mute); font-family: var(--mono); }
+.ev-sum { font-size: 13.5px; }
+.ev-more { padding: 0 8px 9px; font-size: 12.5px; color: var(--ink-2); display: grid; gap: 5px; }
+
+.foot { height: var(--foot-h); display: flex; align-items: center; gap: 16px; padding: 0 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--mute); }
+
+/* Dialogs */
+dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); border-radius: 12px; padding: 18px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); max-height: calc(100vh - 40px); }
+dialog::backdrop { background: rgba(3, 10, 14, 0.65); }
+dialog h2 { font-size: 18px; margin-bottom: 10px; }
+#callDialog { width: min(560px, calc(100vw - 32px)); position: fixed; inset: calc(var(--head-h) + 8px) 16px auto auto; margin: 0; z-index: 10; }
+#resDialog { width: min(1000px, calc(100vw - 32px)); }
+#settingsDialog, #aboutDialog { width: min(560px, calc(100vw - 32px)); }
+.form { display: grid; gap: 10px; }
+.form label { display: grid; gap: 4px; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.form input, .form select, .form textarea { background: var(--ground); border: 1px solid var(--line-2); border-radius: var(--r); padding: 7px 10px; font-size: 14px; color: var(--ink); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.presets { display: flex; gap: 6px; flex-wrap: wrap; }
+.row-end { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.error { color: var(--bad); min-height: 1.2em; font-size: 13px; }
+.hint { color: var(--mute); font-size: 12.5px; }
+.dialog-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+.dialog-head h2 { margin: 0; }
+.dialog-head .btn:last-child { margin-left: auto; }
+.avail { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.avail-bar { width: 70px; height: 5px; background: var(--line-2); border-radius: 3px; overflow: hidden; }
+.avail-bar span { display: block; height: 100%; background: var(--ok); }
+.avail.warn { color: var(--warn); } .avail.warn .avail-bar span { background: var(--warn); }
+.avail.bad { color: var(--bad); }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--panel-2); }
+tr.expand td { background: var(--ground); }
+.forecast svg { width: 100%; max-width: 420px; height: auto; }
+.forecast .axis { stroke: var(--line-2); } .forecast .step { fill: none; stroke: var(--accent); stroke-width: 2; }
+.forecast text { fill: var(--mute); font-size: 10px; font-family: var(--font); }
+
+/* Phone brief (?brief=INC-…), kept from the original console */
+body.brief { background: #15181b; color: #ece9e2; }
+.brief-wrap { max-width: 520px; margin: 0 auto; padding: 20px 18px 60px; }
+.brief-top { display: flex; justify-content: space-between; align-items: center; font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); border-bottom: 2px solid #ece9e2; padding-bottom: 8px; }
+.brief h1 { font: 700 30px/1.12 var(--serif); margin: 14px 0 8px; letter-spacing: -0.01em; text-wrap: balance; }
+.brief .dek { font: 500 18px/1.4 var(--serif); color: var(--mute); margin: 0 0 12px; }
+.brief .dateline { font: 600 12px var(--mono); letter-spacing: .05em; }
+.brief section { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 16px; }
+.brief h3 { font: 500 11px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: 0 0 8px; }
+.brief .facts { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 14.5px; }
+.brief .facts dt { color: var(--mute); } .brief .facts dd { margin: 0; }
+.brief .btabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.brief .btabs button { border: 1px solid var(--line-2); background: transparent; border-radius: 99px; padding: 3px 11px; font-size: 13px; cursor: pointer; }
+.brief .btabs button[aria-pressed="true"] { background: #ece9e2; color: #15181b; }
+.b-order { display: grid; grid-template-columns: 10px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px dotted var(--line-2); font-size: 15.5px; }
+.b-order i { width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; }
+.b-unit { padding: 8px 0; border-bottom: 1px dotted var(--line-2); }
+.b-unit .l1 { display: flex; justify-content: space-between; gap: 10px; font-weight: 600; }
+.b-unit .l2 { font-size: 13px; color: var(--mute); }
+.b-log { display: grid; grid-template-columns: 50px 1fr; gap: 4px 12px; font: 15px/1.45 var(--serif); }
+.b-log time { font: 12px var(--mono); color: var(--mute); padding-top: 3px; }
+.b-log .flag { color: var(--bad); }
+
+/* View: every panel can be hidden; the layout closes up around it. */
+body.hide-calls .side, body.hide-matrix .band, body.hide-agents .agents, body.hide-log .log-panel, body.hide-alerts .alerts,
+body.hide-legend .legend, body.hide-details .drawer, body.hide-rail .rail { display: none !important; }
+/* Fixed columns, so hiding one panel never shifts the others into its track. */
+.side { grid-column: 1; } .centre { grid-column: 2; } .rail { grid-column: 3; }
+body.hide-calls { --col-l: 0px; } body.hide-rail { --col-r: 0px; } body.hide-matrix { --band-h: 0px; } body.hide-alerts { --alerts-h: 0px; }
+.band { position: relative; }
+.panel-hide { margin-left: auto; background: none; border: 0; color: var(--mute); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px 4px; }
+.panel-hide:hover { color: var(--ink); }
+.band .panel-hide { position: absolute; right: 10px; top: 6px; }
+.view-menu { position: relative; }
+.view-menu > summary { list-style: none; }
+.view-menu > summary::-webkit-details-marker { display: none; }
+.view-menu .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 8px 12px; display: grid; gap: 6px; min-width: 210px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.view-menu label { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.view-menu input { accent-color: var(--accent); }
+
+@media (max-width: 1280px) { :root { --col-l: 270px; --col-r: 350px; } .two { grid-template-columns: 1fr; } .band { grid-template-columns: 250px minmax(0, 1fr); } }
+@media (max-width: 1050px) {
+  :root { --col-l: 250px; } .wall { grid-template-columns: var(--col-l) minmax(0, 1fr); height: auto; }
+  .side, .centre { height: calc(100vh - var(--head-h) - var(--band-h)); }
+  .rail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); max-height: 80vh; }
+  .band { height: auto; grid-template-columns: 1fr; } .city { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (max-width: 760px) {
+  .topbar { height: auto; flex-wrap: wrap; padding: 10px 14px; }
+  .actions { margin-left: 0; flex-wrap: wrap; }
+  .matrix-wrap { overflow-x: auto; }
+  .wall { grid-template-columns: minmax(0, 1fr); }
+  .side, .centre, .rail { grid-column: 1; }
+  .side { height: auto; max-height: 50vh; border-right: 0; }
+  .centre { height: auto; } .mapwrap { height: 60vh; flex: none; }
+  .legend { display: none; } .grid2, .grid4 { grid-template-columns: 1fr 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .stage::before, .mk-inc.live, .net-node .working { animation: none; } }
+
+/* ---- story makeover -------------------------------------------------------------------------- */
+:root { --r: 14px; --band-h: 122px; --col-r: 410px; }
+body { background: #050f14; }
+.topbar { background: transparent; border-bottom: 0; }
+.brand strong { font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: 23px; letter-spacing: 0.01em; }
+.brand strong::after { content: ""; }
+.conn-dot { display: inline-flex; align-items: center; padding: 4px; }
+.conn-dot .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--mute); }
+.conn-dot.ok .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(76, 195, 138, 0.18), 0 0 12px rgba(76, 195, 138, 0.6); }
+.conn-dot.bad .dot { background: var(--bad); box-shadow: 0 0 0 4px rgba(255, 95, 97, 0.18); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.btn { border-radius: 11px; }
+.band { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 10px; padding: 0 10px; background: transparent; border: 0; height: var(--band-h); }
+.story, .inv { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; min-width: 0; overflow: hidden; }
+.story { display: grid; grid-template-rows: auto 1fr; gap: 8px; }
+.story-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.story-inc { font-size: 15px; white-space: nowrap; }
+.narr { font-size: 15.5px; font-weight: 600; color: var(--ink-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.narr em { font-style: normal; color: var(--accent); font-weight: 800; }
+.story-score { font: 800 30px/1 "Space Grotesk", var(--font); } .story-score small { font-size: 13px; color: var(--mute); margin-left: 2px; }
+.steps { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+.step { border-radius: 11px; padding: 6px 9px; background: var(--panel-2); border: 1px solid var(--line); min-width: 0; transition: background 300ms, border-color 300ms; }
+.step b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step span { display: block; font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step.done { border-color: rgba(52, 195, 176, 0.4); } .step.done b::before { content: "✓ "; color: var(--accent); } .step.done span { color: var(--ink-2); }
+.step.now { border-color: var(--accent); background: var(--accent-soft); animation: glow 1.4s ease-in-out infinite; }
+.step.now b { color: var(--accent); }
+.step.skip { opacity: 0.32; }
+@keyframes glow { 50% { box-shadow: 0 0 0 4px rgba(52, 195, 176, 0.18); } }
+.inv { display: grid; align-content: start; gap: 4px; }
+.inv-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.inv-row { display: grid; grid-template-columns: 102px 70px 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12.5px; }
+.inv-row .ag-name svg { width: 20px; height: 20px; }
+.inv-bar { height: 7px; border-radius: 4px; background: var(--line-2); overflow: hidden; } .inv-bar span { display: block; height: 100%; border-radius: 4px; transition: width 600ms; }
+.inv-num { color: var(--mute); } .inv-num b { color: var(--ink); font-size: 14px; }
+.inv-chips { display: flex; gap: 4px; overflow: hidden; white-space: nowrap; }
+.inv-chip { font-size: 11px; color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 99px; padding: 0 7px; white-space: nowrap; transition: background 400ms; }
+.inv-chip b { color: var(--ink); } .inv-chip.out { border-color: var(--bad); color: var(--bad); }
+.inv-chip.flash { background: rgba(242, 179, 61, 0.14); border-color: var(--warn); }
+.inv-chip i { font-style: normal; font-weight: 800; margin-left: 4px; } .inv-chip i.down { color: var(--bad); } .inv-chip i.up { color: var(--ok); }
+.inv-crew { font-size: 11px; color: var(--mute); white-space: nowrap; }
+.wall { gap: 10px; padding: 10px; }
+.side, .centre, .rail { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
+.side { border-right: 1px solid var(--line); }
+.rail { border-left: 1px solid var(--line); }
+.mapwrap { border-radius: var(--r) var(--r) 0 0; overflow: hidden; }
+body:not(.has-selection) .mapwrap { border-radius: var(--r); }
+.drawer { border-top: 1px solid var(--line); }
+.card { border-radius: 12px; }
+.agents { border-bottom: 1px solid var(--line); }
+.rail-tabs { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.rtabs { margin: 0; padding: 0 12px; }
+.pane { overflow-y: auto; flex: 1; min-height: 0; padding: 10px 12px; }
+.log-pane { display: flex; flex-direction: column; padding: 0; }
+.log-pane .pane-sec { padding: 10px 14px 4px; } .log-pane .pane-sec:first-child { max-height: 42%; overflow-y: auto; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.log-pane .pane-sec .label { display: block; margin-bottom: 6px; }
+.ag-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; padding: 10px 11px; border-radius: 13px; border: 1px solid var(--line); margin-bottom: 8px; background: var(--panel-2); cursor: pointer; transition: border-color 200ms, opacity 200ms; }
+.ag-row:hover { border-color: var(--line-2); }
+.ag-row.working { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(52, 195, 176, 0.12); }
+.ag-row.picked { border-color: var(--ink-2); }
+.ag-row.idle { opacity: 0.4; }
+.ag-ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.ag-ico svg { width: 22px; height: 22px; }
+.ag-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ag-top b { font-size: 14px; }
+.ag-lead { font-size: 10.5px; font-weight: 800; color: var(--warn); border: 1px solid rgba(242, 179, 61, 0.5); border-radius: 99px; padding: 0 6px; }
+.ag-state { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mute); }
+.ag-state.working { color: var(--accent); } .ag-state.done { color: var(--ok); }
+.ag-state.working::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 5px; animation: blink 1s infinite; }
+.ag-what { font-size: 11.5px; color: var(--mute); }
+.ag-line { font-size: 13px; color: var(--ink); margin-top: 3px; }
+.ag-row .agent-card { margin-top: 8px; }
+.proc { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.proc-row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; padding: 7px 10px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel-2); }
+.proc-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--line-2); color: var(--ink-2); }
+.proc-row.done .proc-dot { background: var(--accent); color: var(--accent-ink); }
+.proc-row.now { border-color: var(--accent); background: var(--accent-soft); } .proc-row.now .proc-dot { background: var(--accent); color: var(--accent-ink); animation: blink 1s infinite; }
+.proc-row.todo { opacity: 0.5; } .proc-row.skip { opacity: 0.3; }
+.proc-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .proc-top b { font-size: 13.5px; }
+.proc-who { font-size: 11.5px; color: var(--mute); } .proc-t { margin-left: auto; font: 500 11.5px var(--mono); color: var(--mute); }
+.proc-text { font-size: 13px; color: var(--ink-2); }
+.nlp-quote { border-left: 3px solid var(--accent); padding: 4px 10px; margin-bottom: 10px; } .nlp-quote p { font: 500 15px/1.4 var(--serif); color: var(--ink); margin-top: 3px; }
+.nlp-card { border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel-2); }
+.nlp-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.kv.nlp { display: grid; grid-template-columns: 110px 1fr; gap: 3px 10px; font-size: 13px; } .kv.nlp dt { color: var(--mute); } .kv.nlp dd { margin: 0; font-weight: 600; }
+.nlp-why { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+dialog { border-radius: 16px; }
+</style>
+</head>
+<body>
+<div id="consoleView">
+  <header class="topbar">
+    <div class="brand"><strong>SURU 999</strong><span>Sheffield</span></div>
+    <span class="clock" id="clock">--:--:--</span>
+    <span class="conn-dot" id="conn" role="status" title="connecting…"><i class="dot"></i><span class="sr">connecting…</span></span>
+    <span class="pill sim" title="Simulated decisions for a hackathon demo. Not for operational use.">SIMULATION</span>
+    <div class="actions">
+      <button class="btn primary" id="btnDemo" type="button" title="Reset the city; three callers report the same Park Hill fire. Duplicates merge, one incident runs through the live models on the DGX Spark">▶ Run demo</button>
+      <button class="btn" id="btnBurst" hidden type="button" title="Several near-simultaneous calls about one incident">Burst calls</button>
+      <button class="btn" id="btnCall" type="button" title="New call (N)">+ New call</button>
+      <button class="btn" id="btnRes" type="button" title="Resources (R)">Resources</button>
+      <details class="view-menu" id="viewMenu" hidden><summary class="btn" title="Show or hide panels">View</summary><div class="menu" id="viewList" role="group" aria-label="Panels"></div></details>
+      <button class="btn" id="btnSettings" type="button" aria-label="Settings" title="Settings">⚙</button>
+    </div>
+  </header>
+  <div class="alerts" id="alerts" role="region" aria-label="Needs action" hidden></div>
+
+  <section class="band" aria-label="What is happening now">
+    <div class="story" id="story"></div>
+    <div class="inv" id="inv" aria-label="Live inventory"></div>
+    <div id="city" hidden></div><table id="matrix" hidden></table>
+  </section>
+
+  <main class="wall">
+    <aside class="side" aria-label="Calls">
+      <div class="head"><span class="label">Calls</span><span class="small muted" id="callCount"></span><button class="panel-hide" type="button" data-hide="calls">Hide</button></div>
+      <div class="chips" id="chips" role="group" aria-label="Filter by incident type"></div>
+      <div id="calls"></div>
+      <details class="fold"><summary>Merged duplicate reports <span id="mergedCount">(0)</span></summary><div id="merged"></div></details>
+      <details class="fold"><summary>Closed <span id="closedCount">(0)</span></summary><div id="closed"></div></details>
+    </aside>
+
+    <section class="centre">
+      <div class="mapwrap">
+        <div id="map" role="application" aria-label="Map of Sheffield calls, stations and dispatched units"></div>
+        <div class="seg map-ctrl" id="mapStyle" role="group" aria-label="Map style"></div>
+        <details class="legend" id="legend" open>
+          <summary>Legend</summary>
+          <ul>
+            <li><i class="k-inc"></i>Call: number = severity, colour = outcome</li>
+            <li><i class="k-merged"></i>Duplicate report, linked to its call</li>
+            <li><i class="k-station"></i>Station (faded = no vehicle free)</li>
+            <li><i class="k-line"></i>Unit sent to the selected call</li>
+            <li><i class="k-cordon"></i>Cordons: inner solid, outer dashed, evacuation dotted</li>
+          </ul>
+        </details>
+      </div>
+      <section class="drawer" id="drawer" aria-live="polite"></section>
+    </section>
+
+    <aside class="rail" aria-label="Agents at work">
+      <section class="agents">
+        <div class="agents-head">
+          <span class="label">Agents at work</span>
+          <span class="inc" id="netTitle"></span>
+          <button class="btn small ghost" id="replayBtn" type="button" title="Replay how the agents handled this call">Replay</button>
+          <button class="panel-hide" type="button" data-hide="agents" style="margin-left:0">Hide</button>
+        </div>
+        <svg id="net" viewBox="0 0 360 272" role="group" aria-label="Qwen, A1 Police, A2 Ambulance, A3 Fire and CR working on one call">
+          <g id="netEdges"></g><g id="netPk" class="pk"></g><g id="netNodes"></g>
+        </svg>
+        <p class="net-detail" id="netDetail" aria-live="polite"></p>
+      </section>
+      <section class="rail-tabs">
+        <div class="tabs rtabs" role="tablist" id="railTabs"></div>
+        <div class="pane" id="paneAgents"></div>
+        <div class="pane" id="paneNlp" hidden></div>
+        <div class="pane log-pane" id="paneLog" hidden>
+          <div class="pane-sec"><span class="label">Incident log</span><div id="incLog"></div></div>
+          <div class="pane-sec"><span class="label">Agent decisions</span></div>
+          <button class="log-toggle" id="logToggle" type="button" hidden aria-expanded="true"><span id="logCount"></span><span id="logLatest"></span><span class="chev"></span></button>
+          <div class="log-body" id="logBody">
+            <div class="log-filters">
+              <div id="toggles" role="group" aria-label="Show agents" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+              <label><input type="checkbox" id="feedOnly" checked> Selected call only</label>
+              <label><input type="checkbox" id="followLive" checked> Follow new calls</label>
+            </div>
+            <ol class="feed" id="feed"></ol>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <button class="link" id="aboutLink" type="button">About this data</button>
+    <span id="footNote"></span>
+  </footer>
+</div>
+
+<div id="briefView" class="brief" hidden></div>
+
+<dialog id="callDialog" aria-labelledby="callTitle">
+  <form class="form" id="callForm" method="dialog">
+    <h2 id="callTitle">New 999 call</h2>
+    <div class="presets" id="presets" aria-label="Fill from a demo scenario"></div>
+    <label>Address<input name="address" required placeholder="Street, landmark"></label>
+    <div class="grid2">
+      <label>District<input name="district" placeholder="e.g. Darnall"></label>
+      <label>Category<select name="category" id="catSelect" required></select></label>
+    </div>
+    <label>Severity <span class="hint" id="sevHint"></span><div class="seg" id="sevSeg" role="group" aria-label="Severity"></div></label>
+    <div class="grid4">
+      <label>Injured<input name="casualties_reported" type="number" min="0" value="0"></label>
+      <label>Trapped<input name="people_trapped" type="number" min="0" value="0"></label>
+      <label>Latitude<input name="lat" type="number" step="0.0001" value="53.3811" required></label>
+      <label>Longitude<input name="lon" type="number" step="0.0001" value="-1.4701" required></label>
+    </div>
+    <p class="hint">Click the map while this form is open to set the location.</p>
+    <label>What the caller said<textarea name="description" rows="2" required></textarea></label>
+    <div class="grid2">
+      <label>Hazards (comma separated)<input name="hazards" placeholder="fuel leak, smoke"></label>
+      <label style="align-content:end"><span><input type="checkbox" name="weapons_involved"> Weapons involved</span></label>
+    </div>
+    <p class="error" id="callError" role="alert"></p>
+    <div class="row-end"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Dispatch</button></div>
+  </form>
+</dialog>
+
+<dialog id="resDialog" aria-labelledby="resTitle">
+  <div class="dialog-head">
+    <h2 id="resTitle">Resources</h2>
+    <div class="tabs" id="resTabs" role="tablist" style="margin-top:0;border:0"></div>
+    <label class="small"><input type="checkbox" id="resLow"> Low availability only</label>
+    <button class="btn" type="button" data-close>Close</button>
+  </div>
+  <div id="resBody"></div>
+</dialog>
+
+<dialog id="settingsDialog" aria-labelledby="setTitle">
+  <h2 id="setTitle">Settings</h2>
+  <div class="form">
+    <label>Run new calls with<div><div class="seg" id="modeSeg"></div></div></label>
+    <p class="hint" id="modeHint"></p>
+    <label>Reset the city: type RESET to clear every call and return all units<input id="resetText" autocomplete="off"></label>
+    <div class="row-end"><button class="btn danger" id="resetBtn" type="button" disabled>Reset city</button></div>
+    <p class="error" id="setError" role="alert"></p>
+    <p class="hint">Keys: <kbd>N</kbd> new call, <kbd>R</kbd> resources, <kbd>J</kbd>/<kbd>K</kbd> next/previous call, <kbd>Esc</kbd> close</p>
+  </div>
+  <div class="row-end"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+
+<dialog id="aboutDialog" aria-labelledby="aboutTitle">
+  <h2 id="aboutTitle">About this data</h2>
+  <div class="form" style="max-width:62ch">
+    <p>SURU runs a 999 call through Qwen (duplicate check and routing), three Nemotron agency agents in parallel (A1 police, A2 ambulance, A3 fire), and Nemotron CR, which settles conflicts and makes the final dispatch. Code enforces life-safety floors, crews every vehicle and re-checks CR's choices; Qwen then scores the outcome.</p>
+    <p>Every decision is tagged with who made it: a model, <b>rules</b>, a <b>fallback</b> (the model call failed and rules filled in), a life-safety <b>floor</b>, or <b>mock</b> (no model server).</p>
+    <p>Stations, unit counts, crews, coordinates and the agencies' knowledge base are approximate and illustrative. Map © OpenMapTiles, data © OpenStreetMap contributors. Satellite imagery © Esri and its data providers.</p>
+    <p><b>Simulated decisions for a hackathon demo. Not for operational use.</b></p>
+  </div>
+  <div class="row-end"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+
+<!-- Sets window.SURU_API_BASE: "" when FastAPI serves this page, "/backend" on Vercel (proxied to the DGX). -->
+<script src="suru-config.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+"use strict";
+const API_BASE = window.SURU_API_BASE ?? "";
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// ---- DOM builders: every text value goes in as a text node, never as HTML -------------------- //
+const h = (tag, attrs = {}, ...kids) => build(document.createElement(tag), attrs, kids);
+const sv = (tag, attrs = {}, ...kids) => build(document.createElementNS(SVGNS, tag), attrs, kids);
+function build(el, attrs, kids) {
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.setAttribute("class", v);
+    else if (k === "style") el.style.cssText = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) el.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return el;
+}
+
+// ---- vocabulary: plain words first, codes second ------------------------------------------- //
+const AGENCY = { police: { label: "Police", agent: "A1" }, ambulance: { label: "Ambulance", agent: "A2" }, fire: { label: "Fire", agent: "A3" }, shared: { label: "Shared" } };
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const agencyColor = (a) => css("--" + (AGENCY[a] ? a : "shared"));
+const AGENTS = {
+  Qwen: { label: "Qwen", color: "--accent" }, A1: { label: "A1 Police", color: "--police" }, A2: { label: "A2 Ambulance", color: "--ambulance" },
+  A3: { label: "A3 Fire", color: "--fire" }, CR: { label: "CR", color: "--cr" }, Rules: { label: "Rules", color: "--rules" },
+};
+const AGENT_AGENCY = { A1: "police", A2: "ambulance", A3: "fire" };
+const CATEGORY = { rtc: "Road collision", structure_fire: "Building fire", high_rise_fire: "High-rise fire", firearms: "Firearms", assault: "Assault",
+  medical: "Medical", cardiac_arrest: "Cardiac arrest", hazmat: "Hazardous materials", flood: "Flood" };
+const CHIP = { fire: ["structure_fire", "high_rise_fire"], police: ["firearms", "assault"], medical: ["medical", "cardiac_arrest"], traffic: ["rtc"], hazmat: ["hazmat", "flood"] };
+const CHIP_LABEL = { fire: "Fire", police: "Police", medical: "Medical", traffic: "Traffic", hazmat: "Hazmat / Env", other: "Other" };
+const VERDICT = { resolved: ["ok", "Fully resourced"], resolved_with_gaps: ["warn", "Partly resourced"], follow_up_required: ["bad", "Needs action"] };
+const HARD_KIND = { crew_shortfall: "Not enough crew", shortfall: "Not enough vehicles", contention: "Agencies competing for the same units",
+  ownership: "Requested another agency's resource", unknown_resource: "Unknown resource type", eta_unmet: "Nothing close enough for the target time" };
+const ACTION = { preempt: "Reassign from a lower-severity call", substitute: "Use a different unit type", mutual_aid: "Request mutual aid",
+  relax_eta: "Accept a later arrival", accept_partial: "Send what is free and record the gap" };
+const SOFT = { ENTRY_RESTRICTED_BUT_REQUIRED: "Entry restricted, but another agency must go in", CORDON_INSIDE_EVACUATION_ZONE: "Cordon smaller than the evacuation zone",
+  STAGING_INSIDE_INNER_CORDON: "Staging inside another agency's hot zone", ROAD_CLOSURE_BLOCKS_ACCESS: "Road closure blocks another agency's access",
+  STAGING_MISMATCH: "Agencies chose different rendezvous points", EVIDENCE_VS_ENTRY: "Evidence preservation vs. operational entry",
+  UNROUTED_AGENCY_NEEDED: "An agency is needed but was not routed", NEED_WITHOUT_RESOURCES: "A need nobody is resourcing" };
+const SEVERITY_TEXT = { 1: "minor", 2: "moderate", 3: "serious", 4: "severe", 5: "major incident" };
+const SEV_COLOR = { 5: "#ff5f61", 4: "#ff8a45", 3: "#f2b33d", 2: "#9fb4bd", 1: "#6f8792" };
+// Solid silhouettes (24x24, even-odd cut-outs), legible at 16-30px: a police car with a light bar, an
+// ambulance with a cross, a fire engine with a ladder, a drone for shared assets, Qwen as a hub, CR as scales.
+const GLYPH = {
+  police: [["path", "M2.5 16.2v-3.3c0-.6.4-1.1 1-1.2l2.6-.6 2.4-3.6c.3-.4.8-.7 1.3-.7h4.4c.5 0 1 .3 1.3.7l2.4 3.6 2.6.6c.6.1 1 .6 1 1.2v3.3zM9.7 8.4h1.9v2.9H7.9zM13.4 8.4h1.9l1.8 2.9h-3.7z"],
+    ["path", "M10 4.4h4v2h-4z"], ["circle", 7, 16.6, 2.1], ["circle", 17, 16.6, 2.1]],
+  ambulance: [["path", "M1.5 6.2h12.8v10.6H1.5zM6.6 8.3h2v2.3h2.3v2H8.6v2.3h-2v-2.3H4.3v-2h2.3z"], ["path", "M14.8 9.2h4.1l3.6 3.9v3.7h-7.7zM16.2 10.5h2.2l1.9 2.1h-4.1z"],
+    ["circle", 5.5, 17.3, 2.1], ["circle", 17.8, 17.3, 2.1]],
+  fire: [["path", "M1.5 10.3h13v6.5h-13z"], ["path", "M15 8.2h4l3.5 4.3v4.3H15zM16.4 9.6h2.1l1.9 2.4h-4z"], ["path", "M1.8 7.7 13.4 4.4l.5 1.6L2.3 9.3zM10.6 6.6h1.7v3.7h-1.7z"],
+    ["circle", 4.8, 17.4, 1.9], ["circle", 9.6, 17.4, 1.9], ["circle", 18.6, 17.4, 1.9]],
+  shared: [["path", "M9.6 9.6h4.8v4.8H9.6zM5.4 6.5l1.1-1.1L12 10.9l5.5-5.5 1.1 1.1L13.1 12l5.5 5.5-1.1 1.1L12 13.1l-5.5 5.5-1.1-1.1L10.9 12z"],
+    ["circle", 6, 6, 2.6], ["circle", 18, 6, 2.6], ["circle", 6, 18, 2.6], ["circle", 18, 18, 2.6]],
+  Qwen: [["path", "M11.2 5h1.6v14h-1.6zM5 11.2h14v1.6H5z"], ["circle", 12, 12, 3.4], ["circle", 12, 3.8, 2.3], ["circle", 12, 20.2, 2.3], ["circle", 3.8, 12, 2.3], ["circle", 20.2, 12, 2.3]],
+  CR: [["path", "M11.2 4.5h1.6v14h-1.6zM7 18.3h10v2.2H7zM4 6.6h16v1.7H4z"], ["path", "M5 8.3 2.2 13.6h5.6zM19 8.3l-2.8 5.3h5.6z"],
+    ["path", "M2 13.6h6a3 3 0 0 1-6 0zM16 13.6h6a3 3 0 0 1-6 0z"], ["circle", 12, 4.2, 1.6]],
+};
+const glyph = (key, x, y, size, color) => sv("g", { transform: `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`, fill: color, "fill-rule": "evenodd" },
+  (GLYPH[key] || GLYPH.shared).map(([t, ...a]) => (t === "path" ? sv("path", { d: a[0] }) : sv("circle", { cx: a[0], cy: a[1], r: a[2] }))));
+const glyphSvg = (key, color) => sv("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, glyph(key, 12, 12, 24, color));
+
+const nice = (s) => String(s ?? "").replaceAll("_", " ");
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+const catText = (c) => CATEGORY[c] || cap(nice(c));
+const chipOf = (c) => Object.keys(CHIP).find((k) => CHIP[k].includes(c)) || "other";
+const pct = (x) => (x == null ? null : Math.round(x * 100));
+const hhmmss = (d) => d.toLocaleTimeString("en-GB", { hour12: false });
+const hhmm = (ts) => (ts ? new Date(ts).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "");
+const minsSince = (ts) => (Date.now() - new Date(ts).getTime()) / 60000;
+const sum = (list, f) => list.reduce((n, x) => n + (f(x) || 0), 0);
+const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
+const band = (v) => (v == null ? "" : v >= 80 ? "good" : v >= 60 ? "warn" : "bad");
+
+async function api(path, opts) {
+  const r = await fetch(API_BASE + path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+const post = (path, body) => api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+
+function byBadge(by) {
+  if (!by) return null;
+  const cls = by === "fallback" ? "fallback" : by === "mock" ? "mock" : by === "rules" || by === "floor" ? "rules" : "model";
+  const text = { fallback: "fallback rules", floor: "life-safety floor", qwen: "Qwen", nemotron: "Nemotron" }[by] || by;
+  return h("span", { class: "by " + cls, title: by === "fallback" ? "The model call failed; deterministic rules filled in" : `Executed by ${text}` }, text);
+}
+const agencyChip = (a) => h("span", { class: "chip-ag", style: `--c:${agencyColor(a)}` }, AGENCY[a]?.label || cap(a));
+const agentChip = (k) => h("span", { class: "agent-chip", style: `--c:${css(AGENTS[k].color)}` }, AGENTS[k].label);
+const raw = (obj) => h("details", { class: "raw" }, h("summary", {}, "Raw"), h("pre", {}, JSON.stringify(obj, null, 2)));
+const more = (label, ...kids) => h("details", { class: "more" }, h("summary", {}, label), ...kids);
+
+// Short names for tight spaces; full names stay in tables.
+const SHORT_UNIT = { fire_engine: "engine", emergency_ambulance: "ambulance", rapid_response_vehicle: "RRV", critical_care_car: "critical care car",
+  armed_response_vehicle: "ARV", roads_policing_unit: "roads unit", aerial_ladder_platform: "aerial ladder", mobile_command_unit: "command unit",
+  hart_team: "HART", water_rescue_unit: "water rescue", public_order_van: "public order van" };
+const SHORT_ACTION = { preempt: "reassign", substitute: "substitute", mutual_aid: "mutual aid", relax_eta: "later arrival", accept_partial: "partial" };
+const unitText = (t) => SHORT_UNIT[t] || nice(t);
+const asks = (reqs, max = 3) => {
+  const list = (reqs || []).map((r) => `${r.quantity} ${unitText(r.resource_type)}`);
+  return list.slice(0, max).join(", ") + (list.length > max ? ` +${list.length - max}` : "");
+};
+const shortPlace = (addr) => String(addr || "unknown place").split(",")[0];
+
+// ---- state ----------------------------------------------------------------------------------- //
+const S = { config: {}, mode: "mock", state: null, lastSeen: 0, online: false, scenarios: [], bursts: {} };
+const RESP = {};            // response_id -> full IncidentResponse (immutable once written)
+const JOBS = {};            // job_id -> {incident_id, events[], queue[], stage, done, replay, startedAt}
+const FEED = [];            // decision log entries across all jobs
+const UI = { selected: null, chips: new Set(), tab: "process", railTab: "agents", hidden: new Set(), acked: new Set(), netNode: null, toast: null };
+let prevMatrix = null, baseMatrix = null, lastScored = 0;
+
+const incidents = () => (S.state ? S.state.incidents : []);
+const incidentOf = (id) => incidents().find((i) => i.incident_id === id);
+const jobFor = (id) => Object.values(JOBS).filter((j) => j.incident_id === id).pop();
+// A run's stages are shown at a readable pace, but /api/state already holds the finished result. Until the
+// "committed" stage has been shown, treat the call as undecided so every panel tells the same moment of the story.
+const shownCommitted = (job) => !job || job.replay || job.events.some((e) => e.event === "committed");
+const responseFor = (inc) => (inc && inc.latest_response_id && shownCommitted(jobFor(inc.incident_id)) ? RESP[inc.latest_response_id] : null);
+const visible = (inc) => UI.chips.size === 0 || UI.chips.has(chipOf(inc.category));
+
+// ---- backend polling ------------------------------------------------------------------------- //
+async function refreshState() {
+  try {
+    S.state = await api("/api/state");
+    S.online = true; S.lastSeen = Date.now();
+    // Responses never change after they are written, so each is fetched once.
+    const missing = incidents().map((i) => i.latest_response_id).filter((id) => id && !RESP[id]);
+    await Promise.all(missing.map((id) => api(`/responses/${id}`).then((r) => { RESP[id] = r; }).catch(() => {})));
+    // Join pipeline runs started by anyone (another screen, the CLI burst); replay finished ones quietly.
+    for (const j of S.state.jobs.slice(-12)) if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, j.done);
+  } catch (e) {
+    S.online = false;
+  }
+  renderConn();
+  renderAll();
+}
+
+function renderConn() {
+  const el = $("conn");
+  const mode = S.mode === "live" ? `live – ${S.config.live_label || "models"}` : "rules only";
+  if (S.online) { el.className = "conn-dot ok"; el.lastChild.textContent = `Online – ${mode}`; }
+  else {
+    const ago = S.lastSeen ? Math.round((Date.now() - S.lastSeen) / 1000) : null;
+    el.className = "conn-dot bad"; el.lastChild.textContent = ago == null ? "Offline" : `Offline – last seen ${ago}s ago`;
+  }
+  el.title = el.lastChild.textContent;
+  const ts = S.state && S.state.time_scale;
+  $("footNote").textContent = `${API_BASE.startsWith("http://localhost") ? "Local console → DGX Spark (SSH tunnel)" : API_BASE ? "Via Vercel proxy to the DGX Spark" : "Served by the SURU API"}${ts && ts !== 1 ? ` – unit return time ×${ts}` : ""}`;
+}
+
+// ---- pipeline jobs and their live event streams ---------------------------------------------- //
+const EVENT_NAMES = ["ingested", "merged", "routing", "routed", "agent_start", "agent_done", "conflicts_detected", "cr_start", "cr_decided", "committed", "evaluating", "evaluated", "completed", "error"];
+const STAGES = [["ingested", "Call received, duplicate check"], ["routed", "Qwen routed it"], ["agent_done", "Agencies proposed"], ["conflicts_detected", "Conflicts checked"],
+  ["cr_decided", "CR decided"], ["committed", "Units dispatched"], ["evaluated", "Qwen scored the response"], ["completed", "Moved to backlog"]];
+
+function subscribe(jobId, incidentId, replay) {
+  const job = JOBS[jobId] = { job_id: jobId, incident_id: incidentId, events: [], queue: [], stage: "Starting", done: false, replay, startedAt: Date.now(), pumping: false };
+  const es = new EventSource(`${API_BASE}/api/jobs/${jobId}/events`);
+  for (const name of EVENT_NAMES) es.addEventListener(name, (m) => { job.queue.push(JSON.parse(m.data)); pump(job); });
+  es.addEventListener("end", () => { es.close(); job.streamEnded = true; pump(job); });
+  es.onerror = () => { es.close(); job.streamEnded = true; pump(job); };
+  if (!replay && $("followLive").checked) select(incidentId, false);
+}
+
+// Mock-mode runs finish in milliseconds; space the stages out (display only) so people can follow them.
+function pump(job) {
+  if (job.pumping) return;
+  const next = () => {
+    if (!job.queue.length) { job.pumping = false; if (job.streamEnded) { job.done = true; renderAll(); } return; }
+    job.pumping = true;
+    apply(job, job.queue.shift());
+    setTimeout(next, job.replay ? 0 : 520);
+  };
+  next();
+}
+
+function apply(job, ev) {
+  const d = ev.data || {};
+  const name = ev.event;
+  job.events.push(ev);
+  const inc = incidentOf(job.incident_id);
+  const ts = new Date((inc ? new Date(inc.received_at).getTime() : job.startedAt) + (ev.t || 0) * 1000);
+  const add = (agent, type, tone, text, detail, by) => FEED.push({ id: FEED.length + 1, ts, incident_id: job.incident_id, agent, type, tone, text, detail, by });
+  // Log lines carry only the vital fact; the full sentence goes in the entry's expandable detail.
+  switch (name) {
+    case "ingested": {
+      const dd = d.dedup || {}, i = d.incident || {};
+      job.stage = "Duplicate check";
+      add("Qwen", "CALL", "", `${catText(i.category)} – ${shortPlace(i.location?.address)} – sev ${i.severity}`,
+        [i.description, dd.verdict && dd.verdict !== "new" ? `${cap(dd.verdict)} to ${dd.match_incident_id}: ${dd.reason}` : null].filter(Boolean).join(" "), dd.executed_by);
+      break;
+    }
+    case "merged":
+      job.stage = `Merged into ${d.into}`; add("Qwen", "MERGED", "warn", `Duplicate → ${d.into}`, d.reason, "rules");
+      if (!job.replay && UI.selected === job.incident_id && $("followLive").checked) select(d.into, false);  // follow the real call, not the duplicate
+      break;
+    case "routing": job.stage = "Qwen routing"; break;
+    case "routed": {
+      job.stage = `Agencies 0/${(d.agencies || []).length}`; job.routing = d;
+      const others = (d.agencies || []).filter((a) => a !== d.lead_agency).map((a) => AGENCY[a]?.label || a);
+      add("Qwen", "ROUTED", "", `${AGENCY[d.lead_agency]?.label || d.lead_agency} leads${others.length ? " – " + others.join(", ") : ""}`, d.rationale, d.executed_by);
+      break;
+    }
+    case "agent_start": job.working = (job.working || new Set()).add(d.agent_id); break;
+    case "agent_done": {
+      job.agents = (job.agents || []).concat(d);
+      job.working?.delete(d.agent_id);
+      job.stage = `Agencies ${job.agents.length}/${(job.routing?.agencies || []).length || job.agents.length}`;
+      const sc = d.scene_constraints || {};
+      add(d.agent_id, "PROPOSAL", "", asks(d.resource_requests) || "No units requested",
+        [d.mission_details?.summary, sc.cordon_inner_radius_m ? `Inner cordon ${sc.cordon_inner_radius_m} m.` : null].filter(Boolean).join(" "), d.executed_by);
+      break;
+    }
+    case "conflicts_detected": {
+      job.stage = "Checking conflicts"; job.conflicts = d;
+      const hard = d.hard || [], soft = d.soft_rules || [];
+      add("Rules", "CONFLICTS", hard.length ? "bad" : soft.length ? "warn" : "ok", hard.length || soft.length ? `${hard.length} hard – ${soft.length} soft` : "None",
+        [...hard.map((x) => `${HARD_KIND[x.kind] || x.kind}: ${unitText(x.resource_type)}.`), ...soft.map((s) => `${SOFT[s.code] || nice(s.code)}.`)].join(" "), "rules");
+      break;
+    }
+    case "cr_start": job.stage = "CR deciding"; job.crWorking = true; break;
+    case "cr_decided": {
+      job.stage = "CR decided"; job.cr = d; job.crWorking = false;
+      const res = d.resolutions || [], counts = {};
+      for (const r of res) counts[r.action] = (counts[r.action] || 0) + 1;
+      add("CR", "DECISION", res.some((r) => r.executed_by === "fallback") ? "warn" : "",
+        res.length ? Object.entries(counts).map(([a, n]) => `${SHORT_ACTION[a] || nice(a)}${n > 1 ? " ×" + n : ""}`).join(" – ") : `${sum(d.manifest || [], (m) => m.quantity)} units, nothing to settle`,
+        [d.rationale, ...res.map((r) => `${ACTION[r.action] || nice(r.action)}: ${unitText(r.resource_type)}${r.substitute_type ? " → " + unitText(r.substitute_type) : ""}.`)].filter(Boolean).join(" "), d.executed_by);
+      break;
+    }
+    case "committed": {
+      job.stage = "Units dispatched"; RESP[d.response_id] = d; job.response_id = d.response_id;
+      const crew = sum(d.allocations || [], (a) => (a.crew || []).length), short = sum(d.unmet || [], (u) => u.quantity);
+      add("CR", "DISPATCHED", short ? "warn" : "ok", `${(d.allocations || []).length} vehicles – ${crew} crew${short ? ` – ${short} short` : ""}`, d.cr_rationale, d.cr_executed_by);
+      break;
+    }
+    case "evaluating": job.stage = "Qwen scoring"; break;
+    case "evaluated":
+      job.stage = `Scored ${d.score}/100`; job.evaluation = d;
+      add("Qwen", "SCORED", (VERDICT[d.verdict] || ["", ""])[0], `${d.score} – ${d.grade} – ${(VERDICT[d.verdict] || ["", nice(d.verdict)])[1]}`, [d.headline, ...(d.findings || [])].join(" "), d.executed_by);
+      break;
+    case "completed": job.stage = "Units assigned"; if (d.response) RESP[d.response.response_id] = d.response; break;
+    case "error": job.stage = "Error"; job.error = d.message; add("Rules", "ERROR", "bad", "Pipeline failed", d.message, "rules"); break;
+  }
+  job.lastEventAt = Date.now();
+  if (!job.replay) {
+    if (job.incident_id === netIncident()) flowFor(name, d, job);
+    renderAll();
+    if (name === "committed" || name === "completed") refreshState();
+  }
+}
+
+// ---- Sheffield success matrix: city headline + per-agency table, from the backend's own evaluations -- //
+function computeMatrix() {
+  const scored = incidents().filter((i) => i.status !== "merged").map(responseFor).filter((r) => r && r.evaluation);
+  const m = scored.map((r) => r.evaluation.metrics || {});
+  const city = {
+    n: scored.length,
+    success: scored.length ? pct(scored.filter((r) => r.evaluation.verdict === "resolved").length / scored.length) : null,
+    essential: pct(mean(m.map((x) => x.essential_fill_rate).filter((x) => x != null))),
+    crews: pct(mean(m.map((x) => x.crew_complete_rate).filter((x) => x != null))),
+    hard: sum(m, (x) => x.hard_conflicts), byCr: sum(m, (x) => x.resolved_by_cr), fallbacks: sum(m, (x) => x.rule_fallbacks), mutualAid: sum(m, (x) => x.mutual_aid_requests),
+  };
+  const rows = ["police", "ambulance", "fire"].map((a) => {
+    const arr = scored.map((r) => r.evaluation.metrics?.arrival?.[a]).filter(Boolean);
+    const firsts = arr.map((x) => x.first_arrival_min).filter((x) => x != null);
+    const sent = sum(scored, (r) => (r.allocations || []).filter((x) => x.agency === a).length);
+    const asked = sum(scored, (r) => sum((r.manifest || []).filter((x) => x.for_agency === a), (x) => x.quantity));
+    return { agency: a, calls: arr.length, onTarget: arr.length ? pct(arr.filter((x) => x.met).length / arr.length) : null,
+      first: firsts.length ? mean(firsts) : null, fill: asked ? pct(Math.min(1, sent / asked)) : null, sent, asked,
+      gaps: sum(scored, (r) => sum((r.unmet || []).filter((u) => u.requested_by === a), (u) => u.quantity)) };
+  });
+  return { city, rows };
+}
+
+function renderMatrix() {
+  const { city, rows } = computeMatrix();
+  if (city.n !== lastScored) { baseMatrix = prevMatrix; lastScored = city.n; }
+  prevMatrix = city;
+  const d = baseMatrix && baseMatrix.success != null && city.success != null && baseMatrix.success !== city.success ? city.success - baseMatrix.success : 0;
+  $("city").replaceChildren(...[
+    h("span", { class: "label" }, "Sheffield response success"),
+    h("div", { class: "city-top" }, h("span", { class: "city-value tone-" + band(city.success) }, city.success == null ? "—" : `${city.success}%`),
+      d ? h("span", { class: "delta " + (d > 0 ? "up" : "down") }, `${d > 0 ? "▲" : "▼"} ${Math.abs(d)}`) : null,
+      h("span", { class: "city-sub" }, city.n ? `of ${city.n} calls fully resourced` : "No calls scored yet")),
+    city.n && h("span", { class: "city-sub", title: `Hard conflicts settled by CR ${city.byCr}, by rules ${Math.max(0, city.hard - city.byCr - city.fallbacks)}, by fallback ${city.fallbacks}` }, `Essential ${city.essential}% – crews ${city.crews}% – ${city.hard} conflicts`)].filter(Boolean));
+  const barCell = (v) => h("td", {}, v == null ? h("span", { class: "muted" }, "—") : [h("span", { class: "bar" }, h("span", { style: `width:${v}%;background:var(--${band(v) === "good" ? "ok" : band(v) === "warn" ? "warn" : "bad"})` })), h("span", { class: "tone-" + band(v) }, `${v}%`)]);
+  $("matrix").replaceChildren(
+    h("thead", {}, h("tr", {}, ["Agency", "Calls", "Arrival on target", "Avg first arrival", "Units sent", "Not covered"].map((t) => h("th", {}, t)))),
+    h("tbody", {}, rows.map((r) => h("tr", {},
+      h("td", {}, h("span", { class: "ag-name" }, glyphSvg(r.agency, agencyColor(r.agency)), AGENCY[r.agency].label)),
+      h("td", {}, r.calls || "—"),
+      barCell(r.onTarget),
+      h("td", {}, r.first == null ? "—" : `${r.first.toFixed(1)} min`),
+      h("td", { title: `${r.sent} of ${r.asked} units the CR manifest asked for` }, r.fill == null ? "—" : [h("span", { class: "bar" }, h("span", { style: `width:${r.fill}%;background:var(--${band(r.fill) === "good" ? "ok" : band(r.fill) === "warn" ? "warn" : "bad"})` })), `${r.sent}/${r.asked}`]),
+      h("td", { class: r.gaps ? "tone-bad" : "" }, r.gaps || "0")))));
+}
+
+// ---- needs-action strip ---------------------------------------------------------------------- //
+function renderAlerts() {
+  const items = [];
+  for (const inc of incidents()) {
+    if (inc.status === "merged" || inc.status === "closed" || UI.acked.has(inc.incident_id)) continue;
+    const r = responseFor(inc), job = jobFor(inc.incident_id);
+    if (job && job.error) items.push([inc, "bad", "pipeline failed"]);
+    else if (r?.evaluation?.verdict === "follow_up_required") items.push([inc, "bad", `${sum(r.unmet || [], (u) => u.quantity)} units not covered`]);
+    else if (r && (r.cr_executed_by === "fallback" || (r.agent_responses || []).some((a) => a.executed_by === "fallback"))) items.push([inc, "warn", "fallback rules used"]);
+  }
+  const toast = UI.toast && UI.toast.until > Date.now() ? UI.toast.text : null;
+  const el = $("alerts");
+  el.hidden = !items.length && !toast;
+  document.documentElement.style.setProperty("--alerts-h", el.hidden ? "0px" : "33px");
+  if (el.hidden) return;
+  el.replaceChildren(...[toast && h("b", { style: "color:var(--bad)" }, toast), items.length && h("b", {}, `Needs action (${items.length})`)].filter(Boolean),
+    ...items.map(([inc, tone, text]) => h("span", { class: "alert " + tone },
+      h("button", { class: "link", type: "button", onclick: () => select(inc.incident_id) }, catText(inc.category)), ` ${shortPlace(inc.address)}: ${text}`,
+      h("button", { class: "btn small ghost", type: "button", title: "Acknowledge", onclick: () => { UI.acked.add(inc.incident_id); renderAll(); } }, "✓"))),
+    h("button", { class: "panel-hide", type: "button", "data-hide": "alerts" }, "Hide"));
+}
+
+// ---- call list ------------------------------------------------------------------------------- //
+function statusOf(inc) {
+  const job = jobFor(inc.incident_id), r = responseFor(inc);
+  if (inc.status === "merged") return ["muted", `Merged → ${inc.duplicate_of}`];
+  if (inc.status === "closed") return ["muted", "Closed"];
+  if (!shownCommitted(job) || inc.status === "pending") return ["live", "Dispatching"];
+  if (r?.evaluation) return VERDICT[r.evaluation.verdict] || ["ok", "Units assigned"];
+  return ["ok", "Units assigned"];
+}
+
+function card(inc) {
+  const job = jobFor(inc.incident_id), [tone, text] = statusOf(inc);
+  const live = !shownCommitted(job) || inc.status === "pending";
+  const mins = minsSince(inc.received_at);
+  return h("button", { type: "button", class: "card" + (UI.selected === inc.incident_id ? " selected" : ""), "aria-pressed": UI.selected === inc.incident_id, "data-id": inc.incident_id, onclick: () => select(inc.incident_id) },
+    h("span", { class: "card-top" }, h("span", { class: "sev-badge", style: `background:${SEV_COLOR[inc.severity]}`, title: `Severity ${inc.severity}: ${SEVERITY_TEXT[inc.severity]}` }, inc.severity),
+      h("span", { class: "card-cat" }, catText(inc.category)), h("span", { class: "status " + tone }, text)),
+    h("span", { class: "card-meta" }, shortPlace(inc.address), " – ",
+      live ? h("span", { class: "timer" + (mins >= 15 ? " red" : mins >= 7 ? " amber" : "") }, `${Math.floor(mins)} min`)
+        : `${inc.units_committed || 0} units${inc.report_count > 1 ? ` – ${inc.report_count} reports` : ""}`),
+    live ? h("span", { class: "stage" }, job ? job.stage : "Waiting for the pipeline") : null);
+}
+
+function renderList() {
+  const all = incidents().filter(visible);
+  const order = (a, b) => b.severity - a.severity || new Date(b.received_at) - new Date(a.received_at);
+  const active = all.filter((i) => i.status !== "merged" && i.status !== "closed").sort(order);
+  const merged = all.filter((i) => i.status === "merged"), closed = all.filter((i) => i.status === "closed").sort(order);
+  $("callCount").textContent = active.length ? `${active.length} active` : "";
+  $("calls").replaceChildren(...(active.length ? active.map(card)
+    : [h("p", { class: "empty" }, incidents().length ? "No active calls match this filter." : "No calls yet. Press ▶ Run demo or + New call.")]));
+  $("mergedCount").textContent = `(${merged.length})`; $("merged").replaceChildren(...merged.map(card));
+  $("closedCount").textContent = `(${closed.length})`; $("closed").replaceChildren(...closed.map(card));
+}
+
+function renderChips() {
+  const present = new Set(incidents().map((i) => chipOf(i.category)));
+  const keys = ["fire", "police", "medical", "traffic", "hazmat", ...(present.has("other") ? ["other"] : [])];
+  $("chips").replaceChildren(
+    h("button", { type: "button", "aria-pressed": UI.chips.size === 0, onclick: () => { UI.chips.clear(); renderAll(); } }, "All"),
+    ...keys.map((k) => h("button", { type: "button", "aria-pressed": UI.chips.has(k), onclick: () => { UI.chips.has(k) ? UI.chips.delete(k) : UI.chips.add(k); renderAll(); } }, CHIP_LABEL[k])));
+}
+
+// ---- map --------------------------------------------------------------------------------------- //
+let map = null, mapStyle = "map";
+const incMarkers = new Map(), stMarkers = new Map(), dynMarkers = [];
+const BASEMAP_PAINT = {
+  background: { "background-color": "#08161d" }, water: { "fill-color": "#0b2a36" }, waterway: { "line-color": "#0b2a36" },
+  landuse_residential: { "fill-color": "#0b1d25" }, landcover_wood: { "fill-color": "#0c2320" }, park: { "fill-color": "#0c2320" },
+  park_outline: { "line-color": "#11302a" }, building: { "fill-color": "#0f232c" }, highway_path: { "line-color": "#14303a" },
+  highway_minor: { "line-color": "#24414e" }, highway_major_casing: { "line-color": "#30546a" }, highway_major_inner: { "line-color": "#1a3542" },
+  highway_major_subtle: { "line-color": "#1a3542" }, highway_motorway_casing: { "line-color": "#386178" }, highway_motorway_inner: { "line-color": "#1c3b4d" },
+  railway: { "line-color": "#182e37" }, highway_name_other: { "text-color": "#6f8b96", "text-halo-color": "#08161d" },
+  place_other: { "text-color": "#8aa4ae", "text-halo-color": "#08161d" }, place_suburb: { "text-color": "#8aa4ae", "text-halo-color": "#08161d" },
+  place_village: { "text-color": "#8aa4ae", "text-halo-color": "#08161d" }, place_town: { "text-color": "#c3d3d9", "text-halo-color": "#08161d" },
+  place_city: { "text-color": "#c3d3d9", "text-halo-color": "#08161d" },
+};
+const ring = (lat, lon, m) => Array.from({ length: 65 }, (_, i) => {
+  const t = (i / 64) * 2 * Math.PI;
+  return [lon + (m / (111320 * Math.cos((lat * Math.PI) / 180))) * Math.cos(t), lat + (m / 111320) * Math.sin(t)];
+});
+const fc = (features) => ({ type: "FeatureCollection", features });
+const line = (coords, props) => ({ type: "Feature", properties: props || {}, geometry: { type: "LineString", coordinates: coords } });
+
+function initMap() {
+  if (typeof maplibregl === "undefined") { $("map").replaceChildren(h("p", { class: "map-fallback" }, "The map library could not load. Calls, details and the agents still work.")); return; }
+  map = new maplibregl.Map({ container: "map", style: "https://tiles.openfreemap.org/styles/fiord", center: [-1.4701, 53.3811], zoom: 12, attributionControl: { compact: true } });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  new ResizeObserver(() => map.resize()).observe($("map"));
+  map.on("load", () => {
+    for (const [layer, paint] of Object.entries(BASEMAP_PAINT)) if (map.getLayer(layer)) for (const [k, v] of Object.entries(paint)) map.setPaintProperty(layer, k, v);
+    // Satellite imagery sits under the overlays; the switch toggles it.
+    map.addSource("sat", { type: "raster", tileSize: 256, maxzoom: 19, attribution: "Imagery © Esri",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"] });
+    map.addLayer({ id: "sat", type: "raster", source: "sat", layout: { visibility: "none" }, paint: { "raster-brightness-max": 0.78, "raster-saturation": -0.15 } });
+    for (const id of ["alloc", "cordons", "merges"]) map.addSource(id, { type: "geojson", data: fc([]) });
+    map.addLayer({ id: "merges", type: "line", source: "merges", paint: { "line-color": "#c3d3d9", "line-width": 1.5, "line-dasharray": [2, 2] } });
+    map.addLayer({ id: "cordon-inner", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "inner"], paint: { "line-color": ["get", "color"], "line-width": 2 } });
+    map.addLayer({ id: "cordon-outer", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "outer"], paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [3, 2] } });
+    map.addLayer({ id: "cordon-evac", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "evac"], paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [0.6, 1.6] } });
+    map.addLayer({ id: "alloc", type: "line", source: "alloc", layout: { "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 2.5, "line-opacity": 0.9 } });
+    map.on("click", (e) => {
+      if (!$("callDialog").open) return;
+      const f = $("callForm");
+      f.lat.value = e.lngLat.lat.toFixed(4); f.lon.value = e.lngLat.lng.toFixed(4);
+    });
+    renderMap();
+  });
+  renderMapStyle();
+}
+
+function renderMapStyle() {
+  $("mapStyle").replaceChildren(...[["map", "Map"], ["sat", "Satellite"]].map(([k, t]) =>
+    h("button", { type: "button", "aria-pressed": mapStyle === k, onclick: () => { mapStyle = k; if (map && map.getLayer("sat")) map.setLayoutProperty("sat", "visibility", k === "sat" ? "visible" : "none"); renderMapStyle(); } }, t)));
+}
+
+function stationCoord(name, agency) {
+  const st = S.state?.stations || [];
+  const s = st.find((x) => x.station === name && x.agency === agency) || st.find((x) => x.station === name);
+  return s ? [s.lon, s.lat] : null;
+}
+
+function renderMap() {
+  if (!map || !map.getSource("alloc") || !S.state) return;
+  // Stations: agency vehicle icons, faded when nothing is free.
+  for (const s of S.state.stations) {
+    const key = s.agency + "|" + s.station;
+    let m = stMarkers.get(key);
+    if (!m) {
+      // A plain wrapper, as for incidents: MapLibre's marker styles would otherwise uncentre the icon.
+      const el = h("div", {}, h("div", { class: "mk-st", style: `background:${agencyColor(s.agency)}` }, glyphSvg(AGENCY[s.agency] ? s.agency : "shared", "#ffffff")));
+      m = new maplibregl.Marker({ element: el }).setLngLat([s.lon, s.lat]).addTo(map); stMarkers.set(key, m);
+    }
+    m.getElement().firstChild.classList.toggle("empty", s.available === 0);
+    m.getElement().title = `${s.station} (${AGENCY[s.agency]?.label || s.agency}): ${s.available} of ${s.total} vehicles free`;
+  }
+  const keep = new Set(), merges = [];
+  for (const inc of incidents()) {
+    if (!visible(inc) || inc.status === "closed" || !Number.isFinite(inc.lat)) continue;
+    keep.add(inc.incident_id);
+    const merged = inc.status === "merged";
+    if (merged) { const p = incidentOf(inc.duplicate_of); if (p) merges.push(line([[inc.lon, inc.lat], [p.lon, p.lat]])); }
+    const [tone, text] = statusOf(inc);
+    const color = tone === "live" ? "#eaf2f5" : tone === "bad" ? css("--bad") : tone === "warn" ? css("--warn") : css("--ok");
+    const el = merged ? h("button", { type: "button", class: "mk-merged", title: `Duplicate report merged into ${inc.duplicate_of}`, onclick: () => select(inc.duplicate_of) })
+      : h("button", { type: "button", class: "mk-inc" + (tone === "live" ? " live" : "") + (UI.selected === inc.incident_id ? " selected" : ""), style: `background:${color}`,
+          title: `${catText(inc.category)} – severity ${inc.severity} – ${text}`, onclick: () => select(inc.incident_id) }, inc.severity);
+    let m = incMarkers.get(inc.incident_id);
+    if (!m) { m = new maplibregl.Marker({ element: h("div"), anchor: "center" }).setLngLat([inc.lon, inc.lat]).addTo(map); incMarkers.set(inc.incident_id, m); }
+    m.getElement().replaceChildren(el);
+    m.getElement().style.zIndex = UI.selected === inc.incident_id ? 3 : merged ? 1 : 2;
+  }
+  for (const [id, m] of incMarkers) if (!keep.has(id)) { m.remove(); incMarkers.delete(id); }
+  map.getSource("merges").setData(fc(merges));
+  renderSelectionLayers();
+}
+
+function renderSelectionLayers() {
+  if (!map || !map.getSource("alloc")) return;
+  dynMarkers.splice(0).forEach((m) => m.remove());
+  const inc = UI.selected && incidentOf(UI.selected), r = responseFor(inc), job = inc && jobFor(inc.incident_id);
+  const allocs = [], rings = [];
+  if (inc && inc.status !== "closed") {
+    const byStation = new Map();
+    for (const a of r?.allocations || []) {
+      const from = stationCoord(a.station, a.agency);
+      if (!from) continue;
+      allocs.push(line([from, [inc.lon, inc.lat]], { color: agencyColor(a.agency) }));
+      const k = a.agency + "|" + a.station;
+      if (!byStation.has(k)) byStation.set(k, { from, agency: a.agency, units: [] });
+      byStation.get(k).units.push(a);
+    }
+    for (const s of byStation.values()) {
+      const label = h("div", { class: "line-label", style: `--c:${agencyColor(s.agency)}` }, `${s.units.length} – ${Math.round(Math.min(...s.units.map((u) => u.eta_min)))} min`);
+      dynMarkers.push(new maplibregl.Marker({ element: label }).setLngLat([(s.from[0] * 2 + inc.lon) / 3, (s.from[1] * 2 + inc.lat) / 3]).addTo(map));
+    }
+    for (const a of r?.agent_responses || job?.agents || []) {
+      const sc = a.scene_constraints || {}, color = agencyColor(a.agency);
+      for (const [kind, m] of [["inner", sc.cordon_inner_radius_m], ["outer", sc.cordon_outer_radius_m], ["evac", sc.evacuation_radius_m]])
+        if (m) rings.push(line(ring(inc.lat, inc.lon, m), { ring: kind, color }));
+    }
+  }
+  map.getSource("alloc").setData(fc(allocs));
+  map.getSource("cordons").setData(fc(rings));
+}
+
+// ---- Agents at work: icon nodes, animated data between them ----------------------------------- //
+const POS = { Qwen: [180, 40], A1: [62, 140], A2: [180, 140], A3: [298, 140], CR: [180, 232] };
+const NR = 25;
+let netSig = "";
+
+function netIncident() {
+  if (UI.selected && incidentOf(UI.selected)) return UI.selected;
+  // A new call's first events can arrive before the next state poll knows the incident; skip it until then.
+  const live = Object.values(JOBS).filter((j) => !j.replay && j.lastEventAt && incidentOf(j.incident_id)).sort((a, b) => b.lastEventAt - a.lastEventAt)[0];
+  if (live) return live.incident_id;
+  const act = incidents().filter((i) => i.status !== "merged" && i.status !== "closed").sort((a, b) => new Date(b.received_at) - new Date(a.received_at))[0];
+  return act ? act.incident_id : null;
+}
+
+// Geometry of a link between two nodes, trimmed to the node circles. Agency-to-agency links bow above the row.
+function linkGeom(a, b) {
+  const [x1, y1] = POS[a], [x2, y2] = POS[b];
+  if (a in AGENT_AGENCY && b in AGENT_AGENCY) {
+    const cx = (x1 + x2) / 2, cy = y1 - (Math.abs(x2 - x1) > 150 ? 62 : 30);
+    return { curve: true, p0: [x1, y1 - NR + 4], c: [cx, cy], p1: [x2, y2 - NR + 4] };
+  }
+  const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  return { curve: false, p0: [x1 + (dx / len) * NR, y1 + (dy / len) * NR], p1: [x2 - (dx / len) * NR, y2 - (dy / len) * NR] };
+}
+const linkPath = (g) => (g.curve ? `M${g.p0} Q${g.c} ${g.p1}` : `M${g.p0} L${g.p1}`);
+function pointAt(g, t) {
+  if (!g.curve) return [g.p0[0] + (g.p1[0] - g.p0[0]) * t, g.p0[1] + (g.p1[1] - g.p0[1]) * t];
+  const u = 1 - t;
+  return [u * u * g.p0[0] + 2 * u * t * g.c[0] + t * t * g.p1[0], u * u * g.p0[1] + 2 * u * t * g.c[1] + t * t * g.p1[1]];
+}
+
+function netModel(id) {
+  const inc = incidentOf(id), job = jobFor(id), r = responseFor(inc);
+  const routing = r?.routing || job?.routing || null;
+  const agents = r?.agent_responses || job?.agents || [];
+  const hard = r?.hard_conflicts || job?.conflicts?.hard || [];
+  const soft = r?.soft_conflicts || [...(job?.conflicts?.soft_rules || []), ...(job?.cr?.soft_semantic || [])];
+  const res = r?.hard_resolutions || job?.cr?.resolutions || [];
+  const routed = new Set(routing?.agencies || []);
+  const nodes = {};
+  nodes.Qwen = { tone: "", sub: job && !job.done && !r ? job.stage : r?.evaluation ? `score ${r.evaluation.score} – ${r.evaluation.grade}` : routing ? "routed" : "",
+    by: routing?.executed_by, working: !!job && !job.done && !routing, detail: routing ? `Qwen routed to ${(routing.agencies || []).map((a) => AGENCY[a]?.label + (a === routing.lead_agency ? " (lead)" : "")).join(", ")}${r?.evaluation ? `; scored ${r.evaluation.score}/100, ${(VERDICT[r.evaluation.verdict] || ["", nice(r.evaluation.verdict)])[1].toLowerCase()}` : ""}.` : "Qwen is checking for duplicates and routing the call." };
+  for (const k of ["A1", "A2", "A3"]) {
+    const a = AGENT_AGENCY[k], p = agents.find((x) => x.agent_id === k || x.agency === a);
+    const sent = r ? (r.allocations || []).filter((x) => x.agency === a).length : null;
+    const want = r ? sum((r.manifest || []).filter((x) => x.for_agency === a), (x) => x.quantity) : null;
+    const gaps = r ? sum((r.unmet || []).filter((u) => u.requested_by === a), (u) => u.quantity) : 0;
+    const tone = r && want ? (gaps ? (r.evaluation?.verdict === "follow_up_required" ? "bad" : "warn") : "ok") : "";
+    nodes[k] = { on: routed.has(a), lead: routing?.lead_agency === a, by: p?.executed_by, working: !!job?.working?.has(k),
+      tone, sub: r && want ? `sent ${sent}/${want}` : p ? `asks ${sum(p.resource_requests || [], (q) => q.quantity)}` : routed.has(a) ? "thinking…" : "not routed",
+      detail: p ? `${AGENTS[k].label} asks for ${asks(p.resource_requests, 6)}${r && want ? `; CR sent ${sent} of ${want}${gaps ? `, ${gaps} not covered` : ""}` : ""}.` : routed.has(a) ? `${AGENTS[k].label} is preparing its proposal.` : `${AGENTS[k].label} was not needed for this call.` };
+  }
+  const preempts = res.filter((x) => x.action === "preempt").length;
+  nodes.CR = { by: r?.cr_executed_by || job?.cr?.executed_by, working: !!job?.crWorking, tone: "",
+    sub: hard.length ? `${hard.length} conflict${hard.length > 1 ? "s" : ""}${preempts ? ` – ${preempts} reassign` : ""}` : r ? "no conflicts" : "",
+    detail: r ? `CR settled ${hard.length} hard and ${soft.length} soft conflicts${res.length ? ` (${[...new Set(res.map((x) => SHORT_ACTION[x.action] || x.action))].join(", ")})` : ""} and dispatched ${(r.allocations || []).length} vehicles.` : "CR waits for every agency, then settles conflicts and dispatches." };
+  // Links: Qwen → agencies; agencies ⇄ CR; agency ⇄ agency where a soft conflict ties them together.
+  const links = [];
+  for (const k of ["A1", "A2", "A3"]) {
+    const on = nodes[k].on;
+    links.push({ a: "Qwen", b: k, cls: on ? "on" : "", color: on ? css("--accent") : null });
+    links.push({ a: k, b: "CR", cls: on ? (nodes[k].tone ? "on" : agents.some((x) => x.agent_id === k) ? "on" : "on waiting") : "", color: on ? (nodes[k].tone ? css("--" + nodes[k].tone) : agencyColor(AGENT_AGENCY[k])) : null });
+  }
+  const pairs = new Set();
+  for (const s of soft) {
+    const ids = (s.agencies || []).map((g) => AGENCY[g]?.agent).filter(Boolean).sort();
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pairs.add(ids[i] + "-" + ids[j]);
+  }
+  for (const p of pairs) { const [a, b] = p.split("-"); links.push({ a, b, cls: "soft", color: null }); }
+  return { inc, job, r, nodes, links, soft, hard };
+}
+
+function renderNet(force = false) {
+  const id = netIncident();
+  if (!id) {
+    if (netSig !== "empty") {
+      netSig = "empty";
+      $("netTitle").textContent = ""; $("netEdges").replaceChildren(); $("netNodes").replaceChildren(drawNodes(null));
+      $("netDetail").textContent = "Start a call to watch Qwen, the three agencies and CR work it together.";
+    }
+    return;
+  }
+  if (id !== renderNet.lastId) { UI.netNode = null; renderNet.lastId = id; if (!force) setTimeout(() => replayFlow(id), 250); }
+  const m = netModel(id);
+  const sig = JSON.stringify([id, m.links, Object.entries(m.nodes).map(([k, n]) => [k, n.sub, n.tone, n.on, n.working, n.by, n.lead]), UI.netNode]);
+  if (sig === netSig && !force) return;
+  netSig = sig;
+  $("netTitle").replaceChildren(h("b", {}, id), ` ${catText(m.inc.category)}`, UI.selected ? "" : h("span", { class: "muted" }, " (latest)"));
+  $("netEdges").replaceChildren(...m.links.map((l) => sv("path", { class: "net-edge " + l.cls, d: linkPath(linkGeom(l.a, l.b)), style: l.color ? `stroke:${l.color}` : null })));
+  $("netNodes").replaceChildren(drawNodes(m));
+  $("netDetail").textContent = (UI.netNode && m.nodes[UI.netNode]?.detail) || (m.r ? "Select an agent to see what it asked for and what it got." : "The agents are working on this call…");
+}
+
+function drawNodes(m) {
+  const g = sv("g");
+  for (const [k, [x, y]] of Object.entries(POS)) {
+    const n = m ? m.nodes[k] : { on: k === "Qwen" || k === "CR" };
+    const agency = AGENT_AGENCY[k], color = agency ? agencyColor(agency) : css(AGENTS[k].color);
+    const idle = agency ? !n.on : false;
+    const node = sv("g", { class: `net-node${idle ? " idle" : ""}${UI.netNode === k ? " picked" : ""}`, tabindex: 0, role: "button", "aria-label": `${AGENTS[k].label}${n.sub ? ": " + n.sub : ""}`,
+      onclick: () => { UI.netNode = UI.netNode === k ? null : k; UI.railTab = "agents"; railSig = ""; renderNet(true); renderRail(); },
+      onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); UI.netNode = UI.netNode === k ? null : k; renderNet(true); } } },
+      n.working ? sv("circle", { class: "working", cx: x, cy: y, r: NR + 6 }) : null,
+      n.by === "fallback" ? sv("circle", { class: "fb", cx: x, cy: y, r: NR + 4 }) : null,
+      sv("circle", { class: "disc", cx: x, cy: y, r: NR, fill: color, stroke: "rgba(255,255,255,0.85)" }),
+      glyph(agency || k, x, y, 32, k === "CR" || k === "Qwen" ? "#08161d" : "#ffffff"),
+      n.lead ? sv("text", { x: x + NR - 2, y: y - NR + 6, class: "net-sub", "text-anchor": "middle", fill: color }, "★") : null,
+      sv("text", { x, y: k === "Qwen" ? y - NR - 7 : y + NR + 14, "text-anchor": "middle", class: "net-name" }, AGENTS[k].label),
+      n.sub ? sv("text", { x: k === "Qwen" ? x + NR + 8 : x, y: k === "Qwen" ? y + 4 : y + NR + 27, "text-anchor": k === "Qwen" ? "start" : "middle", class: "net-sub " + (n.tone || "") }, n.sub) : null,
+      sv("title", {}, `${AGENTS[k].label}${n.by ? ` – executed by ${n.by}` : ""}`));
+    g.append(node);
+  }
+  return g;
+}
+
+// Packets: small dots with a short trail, flowing along a link for each real exchange.
+const PACKETS = [];
+let rafOn = false;
+function spawn(a, b, color, count = 3, gap = 140, dur = 900, delay = 0) {
+  if (REDUCED_MOTION || !(a in POS) || !(b in POS)) return;
+  const g = linkGeom(a, b), now = performance.now() + delay;
+  for (let i = 0; i < count; i++) {
+    const els = [0.35, 0.6, 1].map((o, j) => sv("circle", { r: [1.6, 2.2, 3.2][j], fill: color, "fill-opacity": o }));
+    els.forEach((e) => $("netPk").append(e));
+    PACKETS.push({ g, t0: now + i * gap, dur, els });
+  }
+  if (!rafOn) { rafOn = true; requestAnimationFrame(tick); }
+}
+function tick(now) {
+  for (let i = PACKETS.length - 1; i >= 0; i--) {
+    const p = PACKETS[i], t = (now - p.t0) / p.dur;
+    if (t >= 1) { p.els.forEach((e) => e.remove()); PACKETS.splice(i, 1); continue; }
+    p.els.forEach((e, j) => {
+      const tt = t - (2 - j) * 0.05;
+      if (tt < 0 || t < 0) { e.setAttribute("visibility", "hidden"); return; }
+      const [x, y] = pointAt(p.g, tt);
+      e.setAttribute("visibility", "visible"); e.setAttribute("cx", x); e.setAttribute("cy", y);
+    });
+  }
+  if (PACKETS.length) requestAnimationFrame(tick); else rafOn = false;
+}
+
+// Which packets each pipeline stage sends, and where.
+function flowFor(name, d, job, delay = 0) {
+  const accent = css("--accent"), warn = css("--warn"), bad = css("--bad"), ok = css("--ok");
+  if (name === "routed") for (const a of d.agencies || []) spawn("Qwen", AGENCY[a]?.agent, accent, 3, 130, 850, delay);
+  if (name === "agent_done") spawn(d.agent_id, "CR", agencyColor(d.agency), 4, 120, 950, delay);
+  if (name === "conflicts_detected") {
+    // One exchange per agency pair and one alert per agency, however many conflicts there are.
+    const pairs = new Set(), shortAgents = new Set();
+    for (const s of d.soft_rules || []) {
+      const ids = (s.agencies || []).map((g) => AGENCY[g]?.agent).filter(Boolean).sort();
+      for (let i = 0; i + 1 < ids.length; i++) pairs.add(ids[i] + "-" + ids[i + 1]);
+    }
+    for (const p of pairs) { const [x, y] = p.split("-"); spawn(x, y, warn, 2, 160, 800, delay); spawn(y, x, warn, 2, 160, 800, delay + 300); }
+    for (const c of d.hard || []) for (const a of c.agencies || []) shortAgents.add(AGENCY[a]?.agent);
+    for (const k of shortAgents) spawn(k, "CR", bad, 2, 150, 800, delay);
+  }
+  if (name === "cr_decided") for (const a of job?.routing?.agencies || []) spawn("CR", AGENCY[a]?.agent, css("--cr"), 2, 140, 850, delay);
+  if (name === "committed") {
+    for (const a of job?.routing?.agencies || d.routing?.agencies || []) {
+      const short = (d.unmet || []).some((u) => u.requested_by === a);
+      spawn("CR", AGENCY[a]?.agent, short ? warn : ok, 4, 110, 950, delay);
+    }
+  }
+}
+
+// Replays a finished call's exchange so the interaction can be watched again.
+function replayFlow(id) {
+  const job = jobFor(id), r = responseFor(incidentOf(id));
+  const evs = job?.events?.length ? job.events : r ? [
+    { event: "routed", data: r.routing }, ...(r.agent_responses || []).map((p) => ({ event: "agent_done", data: p })),
+    { event: "conflicts_detected", data: { hard: r.hard_conflicts, soft_rules: r.soft_conflicts } }, { event: "cr_decided", data: {} }, { event: "committed", data: r }] : [];
+  const fake = { routing: r?.routing || job?.routing };
+  let t = 0;
+  for (const e of evs) if (["routed", "agent_done", "conflicts_detected", "cr_decided", "committed"].includes(e.event)) { flowFor(e.event, e.data || {}, fake, t); t += 450; }
+}
+
+// ---- decision log (collapsible) ---------------------------------------------------------------- //
+let feedSig = "";
+const expanded = new Set();
+function renderFeed() {
+  const latest = [...FEED].sort((a, b) => b.ts - a.ts || b.id - a.id)[0];
+  $("logCount").textContent = FEED.length ? `(${FEED.length})` : "";
+  $("logLatest").textContent = latest ? `${AGENTS[latest.agent]?.label}: ${latest.text}` : "Every decision appears here as it happens";
+  if ($("logBody").hidden) return;
+  const only = $("feedOnly").checked && UI.selected;
+  const rows = FEED.filter((f) => {
+    const inc = incidentOf(f.incident_id);
+    if (inc && !visible(inc)) return false;
+    if (UI.hidden.has(f.agent)) return false;
+    return !only || f.incident_id === UI.selected;
+  }).sort((a, b) => b.ts - a.ts || b.id - a.id).slice(0, 200);
+  const sig = JSON.stringify([rows.map((f) => f.id), [...expanded], UI.selected]);
+  if (sig === feedSig) return;
+  feedSig = sig;
+  if (!rows.length) { $("feed").replaceChildren(h("li", { class: "empty", style: "margin:8px" }, FEED.length ? "No decisions match these filters." : "Every agent decision appears here as it happens.")); return; }
+  $("feed").replaceChildren(...rows.map((f) => {
+    const open = expanded.has(f.id);
+    return h("li", { class: "ev" + (f.incident_id === UI.selected ? " hl" : "") },
+      h("button", { type: "button", class: "ev-row", "aria-expanded": open, onclick: () => { open ? expanded.delete(f.id) : expanded.add(f.id); renderFeed(); } },
+        h("span", { class: "ev-top" }, h("time", {}, hhmmss(f.ts)), agentChip(f.agent), h("span", { class: "ev-type " + (f.tone || "") }, f.type), byBadge(f.by), h("span", { class: "ev-inc" }, f.incident_id)),
+        h("span", { class: "ev-sum" }, f.text)),
+      open ? h("div", { class: "ev-more" }, f.detail ? h("p", {}, f.detail) : h("p", { class: "muted" }, "No further detail."),
+        h("button", { type: "button", class: "link", onclick: () => select(f.incident_id) }, `Open this call`)) : null);
+  }));
+}
+
+
+// ---- story mode: one incident told stage by stage (top band, Process tab, Agents/NLP/Log tabs) -------- //
+const STORY = [
+  ["call", "Call received", "999"], ["nlp", "Understand", "NLP · Qwen"], ["dedup", "Duplicates", "MiniLM + Qwen"],
+  ["route", "Route", "Qwen"], ["agents", "Agencies plan", "Nemotron A1–A3"], ["conflicts", "Conflicts", "Rules"],
+  ["cr", "Final call", "Nemotron CR"], ["dispatch", "Dispatch", "Code"], ["score", "Score", "Qwen"]];
+const NOW_TEXT = {
+  call: "A 999 call has just come in.",
+  nlp: "Qwen reads the caller's words: what happened, how bad, who is hurt.",
+  dedup: "MiniLM compares it with recent calls; Qwen decides if it is the same incident.",
+  route: "Qwen picks the agencies and who leads.",
+  agents: "Each agency's Nemotron agent drafts what it needs from its own playbook.",
+  conflicts: "Code checks every request against the live inventory.",
+  cr: "Nemotron CR settles the conflicts and makes the final call.",
+  dispatch: "Code assigns real vehicles and crews from the nearest stations.",
+  score: "Qwen grades the response against the success metrics.",
+};
+const CASES = {};
+function nlpFor(id) {
+  const ev = jobFor(id)?.events.find((e) => e.event === "ingested");
+  if (ev) return { triage: ev.data.triage || {}, dedup: ev.data.dedup || {}, incident: ev.data.incident || {} };
+  if (id == null) return null;
+  if (!(id in CASES)) { CASES[id] = null; api(`/incidents/${encodeURIComponent(id)}`).then((x) => { CASES[id] = x; railSig = ""; drawerSig = ""; renderAll(); }).catch(() => {}); }
+  const c = CASES[id];
+  return c ? { triage: c.triage || {}, dedup: c.dedup || {}, incident: c.incident || {} } : null;
+}
+function stagesFor(id) {
+  const inc = incidentOf(id); if (!inc) return null;
+  const job = jobFor(id), r = responseFor(inc), nlp = nlpFor(id);
+  const seen = new Set((job?.events || []).map((e) => e.event));
+  const finished = !!r || inc.status === "merged" || (!job && inc.status !== "pending");
+  const t = nlp?.triage || {}, dd = nlp?.dedup || {};
+  const routing = r?.routing || job?.routing, agents = r?.agent_responses || job?.agents || [];
+  const kids = incidents().filter((x) => x.duplicate_of === id);
+  const merged = inc.status === "merged";
+  const nRouted = (routing?.agencies || []).length;
+  const done = {
+    call: true, nlp: seen.has("ingested") || finished, dedup: seen.has("ingested") || finished,
+    route: seen.has("routed") || !!r, agents: !!r || (nRouted && agents.length >= nRouted), conflicts: seen.has("conflicts_detected") || !!r,
+    cr: seen.has("cr_decided") || !!r, dispatch: seen.has("committed") || !!r, score: seen.has("evaluated") || !!r?.evaluation,
+  };
+  const hard = r?.hard_conflicts || job?.conflicts?.hard || [], soft = r?.soft_conflicts || job?.conflicts?.soft_rules || [];
+  const res = r?.hard_resolutions || job?.cr?.resolutions || [];
+  const ev = r?.evaluation || job?.evaluation;
+  const units = r?.allocations || [], short = sum(r?.unmet || [], (u) => u.quantity);
+  const working = [...(job?.working || [])].map((k) => AGENTS[k]?.label.replace(/^A\d /, "")).join(", ");
+  const text = {
+    call: nlp?.incident?.description ? `“${String(nlp.incident.description).slice(0, 110)}${nlp.incident.description.length > 110 ? "…" : ""}”` : `${catText(inc.category)} at ${shortPlace(inc.address)}`,
+    nlp: done.nlp ? [catText(t.category || inc.category), `severity ${t.severity ?? inc.severity}`, t.casualties ? `${t.casualties} injured` : null, t.trapped ? `${t.trapped} trapped` : null, t.weapons ? "weapons" : null].filter(Boolean).join(" · ") : "",
+    dedup: merged ? `Same incident as ${inc.duplicate_of}${dd.distance_m != null ? `, ${Math.round(dd.distance_m)} m away` : ""} → merged` : done.dedup ? (kids.length ? `New incident · ${kids.length} more caller${kids.length > 1 ? "s" : ""} merged in` : "New incident") : "",
+    route: routing ? `${AGENCY[routing.lead_agency]?.label || routing.lead_agency} leads${(routing.agencies || []).length > 1 ? " · " + routing.agencies.filter((a) => a !== routing.lead_agency).map((a) => AGENCY[a]?.label || a).join(", ") : ""}` : "",
+    agents: agents.length ? agents.map((p) => `${AGENCY[p.agency]?.label || p.agency} ${sum(p.resource_requests || [], (q) => q.quantity)}`).join(" · ") + " units asked" + (working ? ` · ${working} thinking…` : "") : working ? `${working} thinking…` : "",
+    conflicts: done.conflicts ? (hard.length || soft.length ? `${hard.length} resource · ${soft.length} scene` : "None") : "",
+    cr: done.cr ? (res.length ? `${[...new Set(res.map((x) => SHORT_ACTION[x.action] || nice(x.action)))].join(", ")} · ${res.length} settled` : "Nothing to settle") : "",
+    dispatch: done.dispatch && r ? `${units.length} vehicles · ${sum(units, (u) => (u.crew || []).length)} crew${units.length ? ` · first ${Math.round(Math.min(...units.map((u) => u.eta_min)))} min` : ""}${short ? ` · ${short} short` : ""}` : "",
+    score: ev ? `${ev.score}/100 · ${ev.grade} · ${(VERDICT[ev.verdict] || ["", nice(ev.verdict)])[1]}` : "",
+  };
+  const by = { nlp: t.executed_by, dedup: dd.executed_by, route: routing?.executed_by, agents: agents[0]?.executed_by, conflicts: "rules", cr: r?.cr_executed_by || job?.cr?.executed_by, dispatch: "rules", score: ev?.executed_by };
+  const tOf = { nlp: "ingested", dedup: "ingested", route: "routed", conflicts: "conflicts_detected", cr: "cr_decided", dispatch: "committed", score: "evaluated" };
+  let nowKey = null;
+  const steps = STORY.map(([k, label, who]) => {
+    let state = done[k] ? "done" : "todo";
+    if (merged && !["call", "nlp", "dedup"].includes(k)) state = "skip";
+    if (state === "todo" && !nowKey && job && !job.done) { nowKey = k; state = "now"; }
+    const evT = job?.events.find((e) => e.event === tOf[k])?.t;
+    return { key: k, label, who, state, text: state === "skip" ? "skipped: duplicate" : text[k], by: by[k], t: evT };
+  });
+  return { inc, job, r, ev, steps, nowKey, merged, finished };
+}
+function renderStory() {
+  const id = netIncident(), m = id != null && stagesFor(id);
+  const sig = JSON.stringify(m ? [id, m.steps.map((x) => [x.state, x.text]), m.ev?.score] : null);
+  if (sig === renderStory.sig) return;
+  renderStory.sig = sig;
+  if (!m) {
+    $("story").replaceChildren(h("div", { class: "story-top" }, h("span", { class: "narr" }, "Press ", h("em", {}, "▶ Run demo"), " — three people call 999 about the same fire.")),
+      h("div", { class: "steps" }, STORY.map(([k, label, who]) => h("div", { class: "step" }, h("b", {}, label), h("span", {}, who)))));
+    return;
+  }
+  const narr = m.merged ? [h("em", {}, "Duplicate call. "), `Merged into ${m.inc.duplicate_of}; nothing extra dispatched.`]
+    : m.nowKey ? [h("em", {}, `Now · ${STORY.find((x) => x[0] === m.nowKey)[1]}: `), NOW_TEXT[m.nowKey]]
+    : m.ev ? [h("em", {}, "Done. "), m.ev.headline || `Scored ${m.ev.score}/100.`] : [h("em", {}, "Waiting. "), "Pipeline will start shortly."];
+  $("story").replaceChildren(
+    h("div", { class: "story-top" },
+      h("span", { class: "sev-badge", style: `background:${SEV_COLOR[m.inc.severity]}` }, m.inc.severity),
+      h("b", { class: "story-inc" }, `${catText(m.inc.category)} – ${shortPlace(m.inc.address)}`),
+      h("span", { class: "narr" }, ...narr),
+      m.ev ? h("span", { class: "story-score tone-" + band(m.ev.score) }, `${m.ev.score}`, h("small", {}, "/100")) : null),
+    h("div", { class: "steps" }, m.steps.map((x) => h("div", { class: "step " + x.state, title: x.text || x.who }, h("b", {}, x.label), h("span", {}, x.state === "done" || x.state === "skip" ? (x.text || x.who) : x.who)))));
+}
+
+const INV = { prev: {}, flash: {} };
+function renderInventory() {
+  if (!S.state) return;
+  const now = Date.now();
+  for (const r of S.state.inventory) {
+    const p = INV.prev[r.resource_type];
+    if (p != null && p !== r.available) INV.flash[r.resource_type] = { d: r.available - p, until: now + 8000 };
+    INV.prev[r.resource_type] = r.available;
+  }
+  const crews = {};
+  for (const c of S.state.personnel || []) { const x = crews[c.agency] = crews[c.agency] || { a: 0, t: 0 }; x.a += c.available; x.t += c.on_shift; }
+  const rows = ["police", "ambulance", "fire"].map((ag) => {
+    const list = S.state.inventory.filter((x) => x.agency === ag).sort((a, b) => b.in_service - a.in_service);
+    const free = sum(list, (x) => x.available), tot = sum(list, (x) => x.in_service), share = tot ? free / tot : 0;
+    const chips = list.slice(0, 4).map((x) => {
+      const f = INV.flash[x.resource_type], live = f && f.until > now;
+      return h("span", { class: "inv-chip" + (x.available === 0 ? " out" : "") + (live ? " flash" : ""), title: `${cap(nice(x.resource_type))}: ${x.available} free of ${x.in_service}` },
+        `${unitText(x.resource_type)} `, h("b", {}, `${x.available}/${x.in_service}`), live ? h("i", { class: f.d < 0 ? "down" : "up" }, f.d > 0 ? `+${f.d}` : `${f.d}`) : null);
+    });
+    return h("div", { class: "inv-row" },
+      h("span", { class: "ag-name" }, glyphSvg(ag, agencyColor(ag)), AGENCY[ag].label),
+      h("span", { class: "inv-bar" }, h("span", { style: `width:${Math.round(share * 100)}%;background:${share < 0.3 ? "var(--bad)" : share < 0.6 ? "var(--warn)" : agencyColor(ag)}` })),
+      h("span", { class: "inv-num" }, h("b", {}, free), `/${tot}`),
+      h("span", { class: "inv-chips" }, chips),
+      crews[ag] ? h("span", { class: "inv-crew", title: "Crew available / on shift" }, `crew ${crews[ag].a}/${crews[ag].t}`) : null);
+  });
+  const sig = JSON.stringify([S.state.inventory.map((x) => x.available), Object.entries(INV.flash).filter(([, f]) => f.until > now).map(([k]) => k), crews]);
+  if (sig === renderInventory.sig) return;
+  renderInventory.sig = sig;
+  $("inv").replaceChildren(h("div", { class: "inv-head" }, h("span", { class: "label" }, "Live inventory"), h("span", { class: "muted small" }, "vehicles free now")), ...rows);
+}
+setInterval(() => { renderInventory.sig = ""; renderInventory(); }, 2000);
+
+function processView(id) {
+  const m = stagesFor(id);
+  if (!m) return h("p", { class: "muted" }, "Select a call.");
+  return h("ol", { class: "proc" }, m.steps.map((x, i) => h("li", { class: "proc-row " + x.state },
+    h("span", { class: "proc-dot" }, x.state === "done" ? "✓" : String(i + 1)),
+    h("div", {}, h("div", { class: "proc-top" }, h("b", {}, x.label), h("span", { class: "proc-who" }, x.who), x.by ? byBadge(x.by) : null, x.t != null ? h("span", { class: "proc-t" }, `${x.t}s`) : null),
+      h("div", { class: "proc-text" }, x.state === "now" ? NOW_TEXT[x.key] : x.text || (x.state === "todo" ? "" : "—"))))));
+}
+
+let railSig = "";
+function renderRail() {
+  const id = netIncident();
+  const tabs = [["agents", "Agents"], ["nlp", "NLP results"], ["log", "Incident log"]];
+  $("railTabs").replaceChildren(...tabs.map(([k, t]) => h("button", { role: "tab", type: "button", "aria-selected": UI.railTab === k, onclick: () => { UI.railTab = k; railSig = ""; renderRail(); renderFeed(); } }, t)));
+  $("paneAgents").hidden = UI.railTab !== "agents"; $("paneNlp").hidden = UI.railTab !== "nlp"; $("paneLog").hidden = UI.railTab !== "log";
+  const m = id != null ? stagesFor(id) : null, job = id != null ? jobFor(id) : null;
+  const sig = JSON.stringify([id, UI.railTab, UI.netNode, m?.steps.map((x) => [x.state, x.text]), job?.events.length, !!(id != null && CASES[id]), UI.brief?.incident_id === id ? UI.brief.log.length : 0]);
+  if (sig === railSig) return;
+  railSig = sig;
+  if (UI.railTab === "agents") $("paneAgents").replaceChildren(agentsPane(id));
+  if (UI.railTab === "nlp") $("paneNlp").replaceChildren(nlpPane(id));
+  if (UI.railTab === "log") {
+    if (id != null && (UI.brief?.incident_id !== id || UI.briefAt !== job?.events.length)) { UI.briefAt = job?.events.length; loadBrief(id); }
+    const b = UI.brief && UI.brief.incident_id === id ? UI.brief : null;
+    $("incLog").replaceChildren(id == null ? h("p", { class: "muted small" }, "Select a call.") : b ? h("div", { class: "log" }, b.log.flatMap((l) => [h("time", {}, hhmm(l.ts)), h("div", { class: l.kind === "flag" ? "flag" : "" }, l.text)])) : h("p", { class: "muted small" }, "Loading…"));
+  }
+}
+function agentsPane(id) {
+  if (id == null) return h("p", { class: "empty" }, "Start a call to watch the agents work.");
+  const nm = netModel(id), r = nm.r, job = nm.job, nlp = nlpFor(id);
+  const agents = r?.agent_responses || job?.agents || [];
+  const rows = [
+    { k: "Qwen", color: css("--accent"), what: "Orchestrator: understands the call, checks duplicates, routes, then scores." },
+    { k: "A1", color: agencyColor("police"), what: "Police agent: cordons, scene control, traffic." },
+    { k: "A2", color: agencyColor("ambulance"), what: "Ambulance agent: casualties, triage, transport." },
+    { k: "A3", color: agencyColor("fire"), what: "Fire agent: rescue, firefighting, hazmat." },
+    { k: "CR", color: css("--cr"), what: "Conflict resolver: final manifest, conflicts, dispatch orders." }];
+  return h("div", {}, rows.map(({ k, color, what }) => {
+    const n = nm.nodes[k] || {}, agency = AGENT_AGENCY[k], idle = agency && !n.on;
+    const p = agency ? agents.find((x) => x.agent_id === k || x.agency === agency) : null;
+    const state = n.working ? "working" : idle ? "not needed" : k === "Qwen" ? (r?.evaluation ? "done" : nm.job && !nm.job.done ? "working" : r ? "done" : "") : k === "CR" ? (r ? "done" : "waiting") : p ? "done" : "waiting";
+    let line = n.detail || "";
+    if (k === "Qwen" && nlp?.triage?.category) line = `Read the call as ${catText(nlp.triage.category).toLowerCase()}, severity ${nlp.triage.severity}. ${line}`;
+    if (k === "CR" && r?.cr_rationale) line = r.cr_rationale;
+    const picked = UI.netNode === k;
+    return h("article", { class: `ag-row${n.working ? " working" : ""}${idle ? " idle" : ""}${picked ? " picked" : ""}`, onclick: () => { UI.netNode = picked ? null : k; railSig = ""; renderNet(true); renderRail(); } },
+      h("span", { class: "ag-ico", style: `background:${color}` }, glyphSvg(agency || k, k === "CR" || k === "Qwen" ? "#08161d" : "#ffffff")),
+      h("div", { class: "ag-main" },
+        h("div", { class: "ag-top" }, h("b", {}, AGENTS[k].label), n.lead ? h("span", { class: "ag-lead" }, "lead") : null, state ? h("span", { class: "ag-state " + state.replace(" ", "-") }, state) : null, n.by ? byBadge(n.by) : null),
+        h("div", { class: "ag-what" }, what),
+        line ? h("div", { class: "ag-line" }, line) : null,
+        picked && p ? agentCard(p) : null,
+        picked && k === "CR" && r ? h("div", { class: "ag-more" }, (r.hard_resolutions || []).map((x) => h("div", { class: "small" }, `• ${ACTION[x.action] || nice(x.action)}: ${unitText(x.resource_type)}${x.rationale ? " — " + x.rationale : ""}`))) : null));
+  }));
+}
+function nlpPane(id) {
+  if (id == null) return h("p", { class: "empty" }, "Select a call to see what the NLP stage extracted.");
+  const n = nlpFor(id);
+  if (!n) return h("p", { class: "muted" }, "Loading…");
+  const t = n.triage, d = n.dedup, kids = incidents().filter((x) => x.duplicate_of === id);
+  const kv = (rows) => h("dl", { class: "kv nlp" }, rows.filter((x) => x[1] !== undefined && x[1] !== null && x[1] !== "").flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+  return h("div", {},
+    n.incident?.description ? h("div", { class: "nlp-quote" }, h("span", { class: "label" }, "Caller said"), h("p", {}, `“${n.incident.description}”`)) : null,
+    h("div", { class: "nlp-card" }, h("div", { class: "nlp-h" }, h("b", {}, "Triage"), h("span", { class: "muted small" }, "what Qwen extracted"), byBadge(t.executed_by)),
+      kv([["Incident", catText(t.category)], ["Severity", t.severity != null ? `${t.severity} – ${SEVERITY_TEXT[t.severity] || ""}` : null], ["Injured", t.casualties], ["Trapped", t.trapped],
+        ["Weapons", t.weapons ? "yes" : "no"], ["Hazards", (t.hazards || []).join(", ") || "none"], ["Place", t.place], ["Located by", t.location_resolved_by]]),
+      t.rationale ? h("p", { class: "nlp-why" }, t.rationale) : null),
+    h("div", { class: "nlp-card" }, h("div", { class: "nlp-h" }, h("b", {}, "Duplicate check"), h("span", { class: "muted small" }, "MiniLM similarity + Qwen"), byBadge(d.executed_by)),
+      kv([["Verdict", d.verdict ? cap(d.verdict) : null], ["Matched call", d.match_incident_id], ["Similarity", d.score ? `${Math.round(d.score * 100)}%` : null],
+        ["Distance", d.distance_m != null ? `${Math.round(d.distance_m)} m` : null], ["Time apart", d.minutes_apart != null ? `${d.minutes_apart.toFixed(1)} min` : null],
+        ["MiniLM said", d.minilm_verdict ? cap(d.minilm_verdict) : null], ["Merged callers", kids.length ? kids.map((x) => shortPlace(x.address)).join(", ") : null]]),
+      d.reason ? h("p", { class: "nlp-why" }, d.reason) : null));
+}
+
+// ---- detail drawer: outcome first, the reasoning one tab away ---------------------------------- //
+let drawerSig = "";
+function renderDrawer() {
+  const drawer = $("drawer");
+  const inc = UI.selected && incidentOf(UI.selected);
+  document.body.classList.toggle("has-selection", !!inc);
+  if (!inc) { if (drawerSig !== "none") { drawerSig = "none"; drawer.replaceChildren(h("p", { class: "empty" }, "Select a call in the list or on the map to see what was sent and why.")); } return; }
+  const r = responseFor(inc), job = jobFor(inc.incident_id);
+  const sig = JSON.stringify([inc, r?.response_id, r?.evaluation?.score, job?.events.length, UI.tab, UI.brief?.incident_id === inc.incident_id ? UI.brief.log.length : 0]);
+  if (sig === drawerSig) return;
+  drawerSig = sig;
+  const [tone, text] = statusOf(inc);
+  const tabs = [["process", "Process"], ["outcome", "Dispatch"], ["conflicts", `Conflicts${r ? ` (${(r.hard_conflicts || []).length + (r.soft_conflicts || []).length})` : ""}`], ["manifest", "Manifest"]];
+  const scroll = drawer.querySelector(".d-body")?.scrollTop || 0;
+  drawer.replaceChildren(
+    h("div", { class: "d-head" },
+      h("span", { class: "sev-badge", style: `background:${SEV_COLOR[inc.severity]}` }, inc.severity),
+      h("h2", {}, `${catText(inc.category)} – ${shortPlace(inc.address)}`), h("span", { class: "status " + tone }, text), h("span", { class: "code" }, inc.incident_id),
+      h("div", { class: "d-actions" },
+        h("a", { class: "btn small", href: `${location.pathname}?brief=${encodeURIComponent(inc.incident_id)}`, target: "_blank", rel: "noopener" }, "Phone brief ↗"),
+        inc.status !== "closed" && inc.status !== "merged" && inc.status !== "pending" ? closeButton(inc) : null,
+        h("button", { class: "btn small ghost", type: "button", onclick: () => select(null) }, "Hide"))),
+    h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, t]) => h("button", { role: "tab", type: "button", "aria-selected": UI.tab === k, onclick: () => { UI.tab = k; if (k === "timeline") loadBrief(inc.incident_id); renderDrawer(); } }, t))),
+    h("div", { class: "d-body" }, TAB[UI.tab](inc, r, job)));
+  drawer.querySelector(".d-body").scrollTop = scroll;
+}
+
+function closeButton(inc) {
+  // Two-step close: the first click arms it for 4 seconds.
+  const b = h("button", { class: "btn small", type: "button" }, "Close call");
+  b.addEventListener("click", async () => {
+    if (!b.dataset.armed) { b.dataset.armed = "1"; b.textContent = "Confirm close"; b.classList.add("danger"); setTimeout(() => { delete b.dataset.armed; b.textContent = "Close call"; b.classList.remove("danger"); }, 4000); return; }
+    b.disabled = true;
+    try { await post(`/incidents/${encodeURIComponent(inc.incident_id)}/close`); } catch (e) { b.textContent = "Close failed"; }
+    refreshState();
+  });
+  return b;
+}
+
+function pipelineView(job) {
+  const seen = new Set((job?.events || []).map((e) => e.event));
+  const now = STAGES.find(([k]) => !seen.has(k));
+  return h("div", { class: "sec" }, h("h3", {}, "Pipeline"), h("ol", { class: "pipeline" }, STAGES.map(([k, label]) => {
+    const ev = job?.events.find((e) => e.event === k);
+    return h("li", { class: ev ? "done" : now && now[0] === k ? "now" : "" }, h("i"), label, h("span", { class: "mono small" }, ev ? `${ev.t}s` : ""));
+  })), job?.error ? h("p", { class: "error" }, job.error) : null);
+}
+
+const TAB = {
+  process(inc) { return processView(inc.incident_id); },
+  outcome(inc, r, job) {
+    if (inc.status === "merged") {
+      const parent = incidentOf(inc.duplicate_of);
+      return h("div", {}, h("p", {}, `Duplicate report, merged into ${inc.duplicate_of}. Nothing extra was dispatched.`),
+        parent ? h("button", { class: "btn", type: "button", style: "margin-top:8px", onclick: () => select(parent.incident_id) }, "Open that call") : null);
+    }
+    if (!r) return pipelineView(job);
+    const ev = r.evaluation;
+    const units = [...(r.allocations || [])].sort((a, b) => a.eta_min - b.eta_min);
+    const dirs = {};
+    for (const d of r.directives || []) (dirs[d.agency] = dirs[d.agency] || []).push(d);
+    const pri = (p) => css(p === "immediate" ? "--bad" : p === "high" ? "--warn" : "--rules");
+    const order = (who, d) => h("div", { class: "order" }, h("i", { style: `background:${pri(d.priority)}`, title: d.priority }), who === "all" ? h("b", {}, "All") : agencyChip(who), h("span", {}, d.action));
+    const orders = Object.entries(dirs).flatMap(([who, list]) => list.map((d) => [who, d]));
+    const urgent = orders.filter(([, d]) => d.priority === "immediate");
+    const shown = urgent.length ? urgent : orders.slice(0, 3), rest = orders.filter((o) => !shown.includes(o));
+    return h("div", {},
+      ev ? h("div", { class: "sec" }, h("p", { class: "eval-head" }, ev.headline),
+        h("div", { class: "score" }, h("span", { class: "grade" }, `${ev.score}/100 – ${ev.grade}`), h("span", { class: "status " + (VERDICT[ev.verdict] || ["ok"])[0] }, (VERDICT[ev.verdict] || ["", nice(ev.verdict)])[1]), byBadge(ev.executed_by),
+          (ev.findings || []).length ? more(`Why this score (${ev.findings.length})`, h("ul", { class: "plain small" }, ev.findings.map((f) => h("li", {}, f)))) : null)) : pipelineView(job),
+      h("div", { class: "two" },
+        h("div", { class: "sec" }, h("h3", {}, `Sent – ${units.length} vehicles, ${sum(units, (u) => (u.crew || []).length)} crew`),
+          h("div", { class: "table-wrap" }, h("table", { class: "data" },
+            h("thead", {}, h("tr", {}, ["Unit", "Station", "ETA", ""].map((t, i) => h("th", { class: i === 2 ? "num" : "" }, t)))),
+            h("tbody", {}, units.map((u) => h("tr", {},
+              h("td", { title: `${u.callsign} – ${(u.crew || []).length} crew: ${(u.crew || []).map((c) => nice(c.speciality)).join(", ")}` }, agencyChip(u.agency), " ", unitText(u.resource_type), u.preempted_from ? h("div", { class: "small", style: "color:var(--warn)" }, `from ${u.preempted_from}`) : null),
+              h("td", {}, u.station), h("td", { class: "num" }, `${Math.round(u.eta_min)} min`),
+              h("td", {}, inc.status !== "closed" ? h("button", { class: "btn small ghost", type: "button", onclick: async (e) => { e.currentTarget.disabled = true; await post(`/units/${encodeURIComponent(u.unit_id)}/release`).catch(() => {}); refreshState(); } }, "Release") : null)))))),
+          (r.unmet || []).length ? h("div", { class: "gap" }, h("h3", {}, `Not covered (${sum(r.unmet, (g) => g.quantity)})`),
+            h("p", {}, r.unmet.map((g, i) => [i ? ", " : "", h("b", { title: g.reason }, `${g.quantity} ${unitText(g.resource_type)}`), ` (${AGENCY[g.requested_by]?.label || g.requested_by})`])),
+            r.unmet.some((g) => /mutual aid/i.test(g.reason || "")) ? h("p", { class: "small muted" }, "Mutual aid requested.") : null) : null),
+        h("div", { class: "sec" }, h("h3", {}, "Joint orders"), shown.map(([who, d]) => order(who, d)),
+          rest.length ? more(`More orders (${rest.length})`, rest.map(([who, d]) => order(who, d))) : null)));
+  },
+  why(inc, r, job) {
+    const routing = r?.routing || job?.routing, agents = r?.agent_responses || job?.agents || [];
+    const others = routing ? (routing.agencies || []).filter((a) => a !== routing.lead_agency).map((a) => AGENCY[a]?.label || a) : [];
+    return h("div", {},
+      routing ? h("p", { class: "sec", title: routing.rationale || "" }, h("b", {}, `Qwen: ${AGENCY[routing.lead_agency]?.label || routing.lead_agency} leads${others.length ? " – " + others.join(", ") : ""} `), byBadge(routing.executed_by))
+        : h("p", { class: "muted sec" }, "Waiting for Qwen to route this call."),
+      h("div", { class: "agent-cards" }, agents.map(agentCard)),
+      r ? h("div", { class: "sec", style: "margin-top:12px" }, h("b", {}, "CR final call "), byBadge(r.cr_executed_by), r.cr_rationale ? more("Rationale", h("p", { class: "small" }, r.cr_rationale)) : null) : null);
+  },
+  conflicts(inc, r, job) {
+    const hard = r?.hard_conflicts || job?.conflicts?.hard || [], res = r?.hard_resolutions || job?.cr?.resolutions || [];
+    const soft = r?.soft_conflicts || job?.conflicts?.soft_rules || [];
+    return h("div", { class: "two" },
+      h("section", {}, h("h3", { class: "sec" }, "Units and crews"), hard.length ? hard.map((c) => {
+        const fix = res.find((x) => x.resource_type === c.resource_type);
+        const action = fix ? `${SHORT_ACTION[fix.action] || nice(fix.action)}${fix.substitute_type ? ` → ${unitText(fix.substitute_type)}` : ""}${fix.preempt_unit_ids?.length ? ` ×${fix.preempt_unit_ids.length}` : ""}${fix.mutual_aid_for_remainder ? " + mutual aid" : ""}` : "unresolved";
+        return h("article", { class: "conflict hard" },
+          h("header", {}, h("b", {}, `${cap(unitText(c.resource_type))}: ${c.requested} asked, ${c.available} free`), h("span", { class: "small" }, "→ ", h("b", {}, action), " ", byBadge(fix?.executed_by))),
+          more("Details", h("p", { class: "code" }, c.kind), h("p", { class: "small" }, HARD_KIND[c.kind] || nice(c.kind), ". ", c.detail),
+            fix ? h("p", { class: "small" }, fix.rationale, fix.preempt_unit_ids?.length ? ` Units: ${fix.preempt_unit_ids.join(", ")}.` : "") : null));
+      }) : h("p", { class: "muted" }, "None: every request could be met.")),
+      h("section", {}, h("h3", { class: "sec" }, "How agencies work the scene"), soft.length ? soft.map((s) => h("article", { class: "conflict sev-" + s.severity },
+        h("header", {}, h("b", {}, SOFT[s.code] || nice(s.code)), h("span", {}, (s.agencies || []).map(agencyChip))),
+        more("Details", h("p", { class: "code" }, `${s.code} – ${s.severity} – ${s.source}`), h("p", { class: "small" }, s.detail),
+          s.suggested_resolution ? h("p", { class: "small" }, h("b", {}, "Suggested: "), s.suggested_resolution) : null))) : h("p", { class: "muted" }, "None detected.")));
+  },
+  manifest(inc, r) {
+    if (!r) return h("p", { class: "muted" }, "CR has not written the manifest yet.");
+    const sent = {};
+    for (const a of r.allocations || []) sent[a.resource_type] = (sent[a.resource_type] || 0) + 1;
+    const types = [...new Set([...Object.keys(r.requested_total || {}), ...(r.manifest || []).map((m) => m.resource_type), ...Object.keys(sent)])];
+    return h("div", {},
+      h("table", { class: "data" }, h("thead", {}, h("tr", {}, ["Unit type", "Agency", "Asked", "Manifest", "Sent"].map((t, i) => h("th", { class: i >= 2 ? "num" : "" }, t)))),
+        h("tbody", {}, types.map((t) => {
+          const m = (r.manifest || []).find((x) => x.resource_type === t);
+          const short = (sent[t] || 0) < (m?.quantity || 0);
+          return h("tr", { title: m?.reason || "" }, h("td", {}, cap(nice(t))), h("td", {}, m ? agencyChip(m.for_agency) : ""), h("td", { class: "num" }, (r.requested_total || {})[t] ?? 0),
+            h("td", { class: "num" }, m?.quantity ?? 0), h("td", { class: "num", style: short ? "color:var(--bad);font-weight:700" : "" }, sent[t] || 0));
+        }))),
+      (r.manifest_adjustments || []).length ? more(`Adjustments (${r.manifest_adjustments.length})`,
+        h("ul", { class: "plain small" }, r.manifest_adjustments.map((a) => h("li", {}, typeof a === "string" ? a : `${nice(a.resource_type)}: ${a.from ?? ""} → ${a.to ?? ""} ${a.reason || ""}`)))) : null);
+  },
+  timeline(inc, r, job) {
+    const b = UI.brief && UI.brief.incident_id === inc.incident_id ? UI.brief : null;
+    const log = b ? b.log : [];
+    const recent = log.slice(-4), earlier = log.slice(0, -4);
+    const rows = (list) => h("div", { class: "log" }, list.flatMap((l) => [h("time", {}, hhmm(l.ts)), h("div", { class: l.kind === "flag" ? "flag" : "" }, l.text)]));
+    return h("div", { class: "two" },
+      h("div", { class: "sec" }, h("h3", {}, "Incident log"), b ? [earlier.length ? more(`Earlier entries (${earlier.length})`, rows(earlier)) : null, rows(recent)] : h("p", { class: "muted" }, "Loading the log…")),
+      job ? more("Pipeline timing", pipelineView(job)) : null);
+  },
+};
+
+function agentCard(p) {
+  const sc = p.scene_constraints || {}, md = p.mission_details || {}, color = agencyColor(p.agency);
+  const cordons = [sc.cordon_inner_radius_m && `inner ${sc.cordon_inner_radius_m} m`, sc.cordon_outer_radius_m && `outer ${sc.cordon_outer_radius_m} m`, sc.evacuation_radius_m && `evac ${sc.evacuation_radius_m} m`].filter(Boolean);
+  return h("article", { class: "agent-card" },
+    h("header", {}, h("span", { class: "agent-chip", style: `--c:${color}` }, AGENTS[p.agent_id]?.label || p.agent_id), byBadge(p.executed_by),
+      h("span", { class: "muted small" }, [p.confidence != null && `${Math.round(p.confidence * 100)}% sure`, p.latency_ms != null && `${(p.latency_ms / 1000).toFixed(1)} s`].filter(Boolean).join(" – "))),
+    h("dl", { class: "kv" },
+      h("dt", {}, "Asks"), h("dd", {}, asks(p.resource_requests, 4) || "nothing"),
+      sc.scene_entry ? [h("dt", {}, "Entry"), h("dd", {}, sc.scene_entry)] : null,
+      cordons.length ? [h("dt", {}, "Cordons"), h("dd", {}, cordons.join(", "))] : null,
+      sc.staging_area ? [h("dt", {}, "RVP"), h("dd", {}, sc.staging_area)] : null),
+    more("Plan, safety, sources",
+      (md.tactical_plan || []).length ? [h("h4", {}, "Plan"), h("ul", {}, md.tactical_plan.map((x) => h("li", {}, x)))] : null,
+      (md.safety_notes || []).length ? [h("h4", {}, "Safety"), h("ul", {}, md.safety_notes.map((x) => h("li", {}, x)))] : null,
+      (sc.inter_agency_needs || []).length ? [h("h4", {}, "Needs from others"), h("ul", {}, sc.inter_agency_needs.map((n) => h("li", {}, `${AGENCY[n.agency]?.label || n.agency}: ${n.need}`)))] : null,
+      (sc.road_closures || []).length ? [h("h4", {}, "Road closures"), h("p", {}, sc.road_closures.join(", "))] : null,
+      Object.keys(md.specialist_metadata || {}).length ? [h("h4", {}, "Specialist detail"), h("dl", { class: "kv" }, Object.entries(md.specialist_metadata).flatMap(([k, v]) => [h("dt", {}, cap(nice(k))), h("dd", {}, typeof v === "object" ? JSON.stringify(v) : String(v))]))] : null,
+      (p.kb_citations || []).length ? [h("h4", {}, "Knowledge base"), h("ul", { class: "small" }, p.kb_citations.map((x) => h("li", {}, nice(x).replace("#", ": "))))] : null,
+      raw(p)));
+}
+
+async function loadBrief(id) {
+  try { UI.brief = await api(`/api/brief/${encodeURIComponent(id)}`); } catch (e) { UI.brief = { incident_id: id, log: [{ ts: new Date().toISOString(), kind: "flag", text: `Could not load the log: ${e.message}` }] }; }
+  renderDrawer(); railSig = ""; renderRail();
+}
+
+// ---- resources --------------------------------------------------------------------------------- //
+const RES = { tab: "vehicles", open: new Set(), forecast: {} };
+function availCell(avail, total) {
+  const share = total ? avail / total : 0, tone = avail === 0 ? "bad" : share < 0.3 ? "warn" : "";
+  return h("td", { class: "num" }, h("span", { class: "avail " + tone }, h("span", { class: "avail-bar" }, h("span", { style: `width:${Math.round(share * 100)}%` })), avail));
+}
+function renderResources() {
+  if (!$("resDialog").open || !S.state) return;
+  const low = $("resLow").checked;
+  const lowOnly = (list, a, t) => (low ? list.filter((x) => (x[t] ? x[a] / x[t] : 0) <= 0.3) : list);
+  $("resTabs").replaceChildren(...[["vehicles", "Vehicles"], ["crews", "Crews"], ["stations", "Stations"]].map(([k, t]) =>
+    h("button", { role: "tab", type: "button", "aria-selected": RES.tab === k, onclick: () => { RES.tab = k; renderResources(); } }, t)));
+  let table;
+  if (RES.tab === "vehicles") {
+    const rows = lowOnly(S.state.inventory, "available", "in_service").sort((a, b) => a.agency.localeCompare(b.agency) || a.resource_type.localeCompare(b.resource_type));
+    table = h("table", { class: "data" }, h("thead", {}, h("tr", {}, ["Agency", "Type", "In service", "Committed", "Available"].map((t, i) => h("th", { class: i >= 2 ? "num" : "" }, t)))),
+      h("tbody", {}, rows.flatMap((r) => {
+        const open = RES.open.has(r.resource_type), fcData = RES.forecast[r.resource_type];
+        return [h("tr", { class: "clickable", title: "Show the 2-hour forecast", onclick: () => toggleForecast(r.resource_type) },
+          h("td", {}, agencyChip(r.agency)), h("td", {}, cap(nice(r.resource_type))),
+          h("td", { class: "num" }, r.in_service), h("td", { class: "num" }, r.committed), availCell(r.available, r.in_service)),
+          open ? h("tr", { class: "expand" }, h("td", { colspan: 5 }, fcData ? forecastChart(r, fcData) : h("p", { class: "muted" }, "Loading forecast…"))) : null];
+      })));
+  } else if (RES.tab === "crews") {
+    const rows = lowOnly(S.state.personnel, "available", "on_shift");
+    table = h("table", { class: "data" }, h("thead", {}, h("tr", {}, ["Agency", "Speciality", "On shift", "Committed", "Available"].map((t, i) => h("th", { class: i >= 2 ? "num" : "" }, t)))),
+      h("tbody", {}, rows.map((r) => h("tr", {}, h("td", {}, agencyChip(r.agency)), h("td", {}, cap(nice(r.speciality))), h("td", { class: "num" }, r.on_shift), h("td", { class: "num" }, r.committed), availCell(r.available, r.on_shift)))));
+  } else {
+    const rows = lowOnly(S.state.stations, "available", "total");
+    table = h("table", { class: "data" }, h("thead", {}, h("tr", {}, ["Station", "Agency", "Vehicles", "Free"].map((t, i) => h("th", { class: i >= 2 ? "num" : "" }, t)))),
+      h("tbody", {}, rows.map((s) => h("tr", {}, h("td", {}, s.station), h("td", {}, agencyChip(s.agency)), h("td", { class: "num" }, s.total), availCell(s.available, s.total)))));
+  }
+  $("resBody").replaceChildren(h("div", { class: "table-wrap" }, table));
+}
+async function toggleForecast(type) {
+  if (RES.open.has(type)) RES.open.delete(type); else { RES.open.add(type); renderResources(); RES.forecast[type] = await api(`/resources/${encodeURIComponent(type)}/forecast`).catch(() => []); }
+  renderResources();
+}
+function forecastChart(r, points) {
+  const w = 420, ht = 96, max = Math.max(1, r.in_service, ...points.map((p) => p.available));
+  const x = (m) => 10 + (m / 120) * (w - 20), y = (v) => ht - 20 - (v / max) * (ht - 34);
+  let d = "";
+  points.forEach((p, i) => { d += i ? `H${x(p.t_plus_min)}V${y(p.available)}` : `M${x(p.t_plus_min)},${y(p.available)}`; });
+  return h("figure", { class: "forecast" }, h("figcaption", { class: "small muted" }, `${cap(nice(r.resource_type))} free over the next 2 hours`),
+    sv("svg", { viewBox: `0 0 ${w} ${ht}`, role: "img", "aria-label": `Forecast for ${nice(r.resource_type)}` },
+      sv("line", { x1: 10, x2: w - 10, y1: y(0), y2: y(0), class: "axis" }), sv("path", { d, class: "step" }),
+      [0, 30, 60, 90, 120].map((m) => sv("text", { x: x(m), y: ht - 5, "text-anchor": "middle" }, m ? `+${m} min` : "now")),
+      sv("text", { x: w - 10, y: y(max) - 4, "text-anchor": "end" }, `${max}`)));
+}
+
+// ---- actions ----------------------------------------------------------------------------------- //
+function select(id, fly = true) {
+  if (id !== UI.selected) { UI.tab = "process"; drawerSig = ""; }
+  UI.selected = id;
+  $("legend").open = !id;
+  renderAll();
+  const inc = id && incidentOf(id);
+  if (fly && map && inc && Number.isFinite(inc.lat)) requestAnimationFrame(() => { map.resize(); map.flyTo({ center: [inc.lon, inc.lat], zoom: 14, speed: 1.4 }); });
+}
+
+async function startRun(incident) {
+  const job = await post("/api/run", { incident, mode: S.mode });
+  subscribe(job.job_id, job.incident_id, false);
+  refreshState();
+}
+
+// One click = the cluster demo: reset the city, then three 999 calls about the same Park Hill fire arrive
+// seconds apart. MiniLM + Qwen merge the duplicates, so only ONE incident goes through Nemotron A1-A3 and CR.
+// Fast (one pipeline run) and it never exhausts the city. Progress + elapsed time on the button.
+const CLUSTER_CALLS = 3;  // the first three Park Hill reports: same fire, different callers
+async function runDemo() {
+  const btn = $("btnDemo");
+  if (btn.disabled) return;
+  const names = Object.keys(S.bursts);
+  if (!names.length) return toastError("No cluster scenario on this server.");
+  btn.disabled = true;
+  const t0 = Date.now();
+  const fmt = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  let label = "Resetting city";
+  const tick = setInterval(() => { btn.textContent = `${label} · ${fmt(Date.now() - t0)}`; }, 500);
+  try {
+    await post("/api/reset");
+    for (const k of Object.keys(JOBS)) delete JOBS[k];
+    FEED.length = 0; select(null, false);
+    await refreshState();
+    // An earlier call is already tying up crews, so the cluster is not handled from a full city.
+    const earlier = S.scenarios.find((x) => /9th floor|Broomhall/i.test(x.description || "")) || S.scenarios[3];
+    if (earlier) {
+      label = "Earlier call already on scene";
+      const pre = await post("/api/run", { incident: earlier, mode: "mock" });
+      subscribe(pre.job_id, pre.incident_id, true);
+      while (S.state && S.state.jobs_running) { await new Promise((r) => setTimeout(r, 400)); await refreshState(); }
+      await refreshState();
+    }
+    label = `${CLUSTER_CALLS} calls coming in`;
+    const calls = S.bursts[names[0]].slice(0, CLUSTER_CALLS);
+    const res = await post("/api/burst", { incidents: calls, mode: S.mode, stagger_s: 3 });
+    const mine = res.jobs.map((j) => j.job_id);
+    res.jobs.forEach((j, i) => { if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, false); });
+    if (res.jobs.length) select(res.jobs[0].incident_id, false);
+    refreshState();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const jobs = mine.map((id) => JOBS[id]).filter(Boolean);
+      const merged = jobs.filter((j) => j.events.some((e) => e.event === "merged")).length;
+      const done = jobs.filter((j) => j.done).length;
+      label = merged ? `${merged} duplicate${merged > 1 ? "s" : ""} merged · agents working` : "Agents working";
+      if (done === mine.length) break;
+    }
+    await refreshState();
+    // End on the incident that was actually dispatched (not the last merged duplicate), so the agent
+    // network and decision log show the full Qwen -> A1-A3 -> CR story.
+    const lead = mine.map((id) => JOBS[id]).find((j) => j && !j.events.some((e) => e.event === "merged"));
+    if (lead) select(lead.incident_id, false);
+    clearInterval(tick);
+    btn.textContent = `✓ Demo complete · ${fmt(Date.now() - t0)} · run again`;
+  } catch (e) {
+    clearInterval(tick);
+    toastError(`Demo stopped: ${e.message}`);
+    btn.textContent = "▶ Run cluster demo";
+  }
+  btn.disabled = false;
+}
+
+async function runBurst() {
+  const names = Object.keys(S.bursts);
+  if (!names.length) return toastError("No burst scenarios on this server.");
+  const btn = $("btnBurst"); btn.disabled = true; btn.textContent = "Calls coming in…";
+  try {
+    const res = await post("/api/burst", { incidents: S.bursts[names[0]], mode: S.mode, stagger_s: 1.5 });
+    for (const j of res.jobs) if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, false);
+    refreshState();
+  } catch (e) { toastError(`Burst failed: ${e.message}`); }
+  btn.disabled = false; btn.textContent = "Burst calls";
+}
+
+function toastError(text) { UI.toast = { text, until: Date.now() + 10000 }; renderAlerts(); }
+
+function renderAll() {
+  renderChips(); renderStory(); renderInventory(); renderAlerts(); renderList(); renderMap(); renderDrawer(); renderNet(); renderRail(); renderFeed();
+  if ($("resDialog").open) renderResources();
+}
+
+// ---- new call form ----------------------------------------------------------------------------- //
+let sevValue = 3;
+function initCallForm() {
+  $("catSelect").replaceChildren(...Object.entries(CATEGORY).map(([k, v]) => h("option", { value: k }, v)));
+  const drawSeg = () => {
+    $("sevSeg").replaceChildren(...[1, 2, 3, 4, 5].map((n) => h("button", { type: "button", "aria-pressed": n === sevValue, onclick: () => { sevValue = n; drawSeg(); } }, n)));
+    $("sevHint").textContent = `(${SEVERITY_TEXT[sevValue]})`;
+  };
+  drawSeg();
+  $("presets").replaceChildren(h("span", { class: "hint" }, "Fill from a scenario:"), ...S.scenarios.map((s) => h("button", { class: "btn small", type: "button", onclick: () => {
+    const f = $("callForm");
+    f.address.value = s.location.address || ""; f.district.value = s.location.district || ""; f.category.value = s.category; f.description.value = s.description;
+    f.lat.value = s.location.lat; f.lon.value = s.location.lon; f.casualties_reported.value = s.casualties_reported || 0; f.people_trapped.value = s.people_trapped || 0;
+    f.hazards.value = (s.hazards || []).join(", "); f.weapons_involved.checked = !!s.weapons_involved; sevValue = s.severity; drawSeg();
+  } }, `${catText(s.category)}, ${s.location.district || shortPlace(s.location.address)}`)));
+  $("callForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.currentTarget;
+    const incident = { category: f.category.value, description: f.description.value.trim(), severity: sevValue,
+      location: { lat: Number(f.lat.value), lon: Number(f.lon.value), address: f.address.value.trim(), district: f.district.value.trim() },
+      casualties_reported: Number(f.casualties_reported.value) || 0, people_trapped: Number(f.people_trapped.value) || 0,
+      hazards: f.hazards.value.split(",").map((s) => s.trim()).filter(Boolean), weapons_involved: f.weapons_involved.checked };
+    try { await startRun(incident); $("callDialog").close(); f.reset(); sevValue = 3; drawSeg(); }
+    catch (e) { $("callError").textContent = `Could not dispatch: ${e.message}`; }
+  });
+}
+
+function setMode(m) {
+  S.mode = m;
+  $("modeSeg").replaceChildren(
+    h("button", { type: "button", "aria-pressed": m === "live", disabled: !S.config.live_available, onclick: () => setMode("live") }, "Live models"),
+    h("button", { type: "button", "aria-pressed": m === "mock", onclick: () => setMode("mock") }, "Rules only"));
+  $("modeHint").textContent = S.config.live_available ? `Live: ${S.config.live_label}.` : "Live models are off: the API was started without LLM_MODE=live.";
+  renderConn();
+}
+
+function setLogOpen(open) {
+  $("logToggle").setAttribute("aria-expanded", String(open));
+  $("logBody").hidden = !open;
+  feedSig = "";
+  renderFeed();
+}
+
+
+// ---- view: show or hide any panel; remembered in this browser only ------------------------------ //
+const VIEW_ITEMS = [["calls", "Calls list"], ["matrix", "Success matrix"], ["alerts", "Needs-action strip"], ["agents", "Agents diagram"],
+  ["log", "Decision log"], ["details", "Call details"], ["legend", "Map legend"]];
+const VIEW = Object.fromEntries(VIEW_ITEMS.map(([k]) => [k, true]));
+try { Object.assign(VIEW, JSON.parse(localStorage.getItem("suru-view") || "{}")); } catch { /* storage blocked: defaults */ }
+function applyView() {
+  for (const [k] of VIEW_ITEMS) document.body.classList.toggle("hide-" + k, !VIEW[k]);
+  document.body.classList.toggle("hide-rail", !VIEW.agents && !VIEW.log);
+  try { localStorage.setItem("suru-view", JSON.stringify(VIEW)); } catch { /* storage blocked */ }
+  $("viewList").replaceChildren(...VIEW_ITEMS.map(([k, label]) => h("label", {},
+    h("input", { type: "checkbox", checked: VIEW[k] || null, onchange: (e) => setView(k, e.target.checked) }), label)),
+    h("button", { class: "btn small", type: "button", onclick: () => { for (const [k] of VIEW_ITEMS) VIEW[k] = true; applyView(); } }, "Show all"));
+  if (map) requestAnimationFrame(() => map.resize());
+}
+function setView(k, on) { VIEW[k] = on; applyView(); }
+document.addEventListener("click", (e) => {
+  const hide = e.target.closest("[data-hide]");
+  if (hide) setView(hide.dataset.hide, false);
+  if (!e.target.closest("#viewMenu")) $("viewMenu").open = false;
+});
+
+// ---- boot -------------------------------------------------------------------------------------- //
+async function bootConsole() {
+  setInterval(() => { $("clock").textContent = hhmmss(new Date()); }, 1000);
+  $("clock").textContent = hhmmss(new Date());
+  $("toggles").replaceChildren(...Object.entries(AGENTS).map(([k, a]) => h("button", { type: "button", class: "toggle", style: `--c:${css(a.color)}`, "aria-pressed": "true",
+    onclick: (e) => { UI.hidden.has(k) ? UI.hidden.delete(k) : UI.hidden.add(k); e.currentTarget.setAttribute("aria-pressed", String(!UI.hidden.has(k))); renderFeed(); } }, a.label)));
+  for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) d.close(); });
+  $("btnDemo").onclick = runDemo; $("btnBurst").onclick = runBurst;
+  $("btnCall").onclick = () => { $("callError").textContent = ""; $("callDialog").show(); };
+  $("btnRes").onclick = () => { $("resDialog").showModal(); renderResources(); };
+  $("btnSettings").onclick = () => $("settingsDialog").showModal();
+  $("aboutLink").onclick = () => $("aboutDialog").showModal();
+  $("logToggle").onclick = () => {};
+  $("replayBtn").onclick = () => { const id = netIncident(); if (id) replayFlow(id); };
+  $("resLow").onchange = renderResources;
+  $("feedOnly").onchange = () => { feedSig = ""; renderFeed(); };
+  $("resetText").oninput = (e) => { $("resetBtn").disabled = e.target.value !== "RESET"; };
+  $("resetBtn").onclick = async () => {
+    try { await post("/api/reset"); for (const k of Object.keys(JOBS)) delete JOBS[k]; FEED.length = 0; select(null, false); $("resetText").value = ""; $("resetBtn").disabled = true; $("settingsDialog").close(); refreshState(); }
+    catch (e) { $("setError").textContent = e.message; }
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]:modal")) return;
+    if (e.key === "n" || e.key === "N") { e.preventDefault(); $("btnCall").click(); }
+    else if (e.key === "r" || e.key === "R") { e.preventDefault(); $("btnRes").click(); }
+    else if (e.key === "j" || e.key === "k") {
+      const list = [...document.querySelectorAll("#calls .card")].map((c) => c.dataset.id);
+      if (!list.length) return;
+      const i = list.indexOf(UI.selected);
+      select(list[(i + (e.key === "j" ? 1 : -1) + list.length) % list.length]);
+    } else if (e.key === "Escape" && UI.selected) select(null, false);
+  });
+  applyView();
+  initMap();
+  try {
+    [S.config, S.scenarios, S.bursts] = await Promise.all([api("/api/config"), api("/api/scenarios"), api("/api/burst").catch(() => ({}))]);
+  } catch (e) { toastError(`Could not reach the SURU API: ${e.message}`); }
+  const qmode = new URLSearchParams(location.search).get("mode");
+  setMode(qmode === "mock" || !S.config.live_available ? "mock" : "live");
+  initCallForm();
+  await refreshState();
+  setInterval(refreshState, 3000);                         // other operators' calls and returning units show up on their own
+  setInterval(() => { renderConn(); renderList(); }, 1000);  // call timers and stage clocks
+}
+
+// ---- phone brief (?brief=INC-…), kept from the original console ------------------------------- //
+async function bootBrief(id) {
+  $("consoleView").hidden = true;
+  const root = $("briefView"); root.hidden = false; document.body.classList.add("brief");
+  let agency = new URLSearchParams(location.search).get("agency") || "all";
+  async function draw() {
+    let b;
+    try { b = await api(`/api/brief/${encodeURIComponent(id)}`); }
+    catch (e) { root.replaceChildren(h("div", { class: "brief-wrap" }, h("p", {}, `Could not load ${id}: ${e.message}`))); return; }
+    document.title = `${b.incident_id} – ${b.headline}`;
+    const orders = Object.entries(b.orders).flatMap(([who, list]) => list.map((o) => ({ who, ...o }))).filter((o) => agency === "all" || o.who === agency || o.who === "all");
+    const units = b.units.filter((u) => agency === "all" || u.agency === agency);
+    const tab = (k, label) => h("button", { "aria-pressed": agency === k, onclick: () => { agency = k; history.replaceState(null, "", `?brief=${id}${k === "all" ? "" : "&agency=" + k}`); draw(); } }, label);
+    const ev = b.evaluation;
+    root.replaceChildren(h("div", { class: "brief-wrap" },
+      h("div", { class: "brief-top" }, h("span", {}, `${b.incident_id} – ${b.status}`), h("span", {}, `Severity ${b.severity}/5`)),
+      h("h1", {}, b.headline), h("p", { class: "dek" }, b.dek), h("div", { class: "dateline" }, `${b.dateline} — ${b.place}`),
+      h("section", {}, h("h3", {}, "Key facts"), h("dl", { class: "facts" }, Object.entries(b.facts).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, String(v))]))),
+      h("section", {}, h("h3", {}, "Orders"), h("div", { class: "btabs" }, tab("all", "All"), tab("police", "Police"), tab("ambulance", "Ambulance"), tab("fire", "Fire")),
+        orders.length ? orders.map((o) => h("div", { class: "b-order" }, h("i", { style: `background:${css(o.priority === "immediate" ? "--bad" : o.priority === "high" ? "--warn" : "--rules")}` }),
+          h("div", {}, h("b", {}, o.who === "all" ? "All crews: " : `${cap(o.who)}: `), o.action))) : h("p", { class: "hint" }, "No orders for this agency.")),
+      h("section", {}, h("h3", {}, `Units (${units.length})`),
+        units.map((u) => h("div", { class: "b-unit" }, h("div", { class: "l1" }, h("span", {}, `${u.callsign} – ${u.type}`), h("span", {}, `ETA ${Math.round(u.eta_min)} min`)),
+          h("div", { class: "l2" }, `${u.station}${u.reassigned_from ? `, reassigned from ${u.reassigned_from}` : ""} – ${u.crew.join(", ")}`), u.task ? h("div", { class: "l2" }, u.task) : null)),
+        b.gaps.length ? h("p", { style: "color:var(--bad)" }, "Not yet covered: " + b.gaps.join("; ")) : null),
+      h("section", {}, h("h3", {}, "Incident log"), h("div", { class: "b-log" }, b.log.flatMap((l) => [h("time", {}, l.ts.slice(11, 16)), h("div", { class: l.kind === "flag" ? "flag" : "" }, l.text)]))),
+      ev ? h("section", {}, h("h3", {}, "Outcome"), h("p", {}, h("b", {}, `${ev.score}/100, grade ${ev.grade}. `), nice(ev.verdict) + "."),
+        (ev.findings || []).length ? h("ul", {}, ev.findings.map((f) => h("li", {}, f))) : null) : null,
+      h("p", { class: "hint", style: "margin-top:24px" }, "Updates every 15 seconds.")));
+  }
+  await draw();
+  setInterval(draw, 15000);
+}
+
+const briefId = new URLSearchParams(location.search).get("brief");
+(briefId ? bootBrief(briefId) : bootConsole()).catch((e) => toastError("Could not load: " + e.message));
+</script>
+</body>
+</html>
