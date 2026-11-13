@@ -8,7 +8,8 @@ Opt-in Park Square flood probe (real cached/downloaded roads required by CLI):
 Flood intensity is normalized 0..10, NOT water depth. Standoff, escalation and
 work rates are explicit demonstration assumptions, not calibrated hydrodynamics.
 Staged observation/reinforcement fields are additive; the agent/UI adapters still
-need to consume them. Existing generic scenarios keep their original behaviour.
+need to consume them. Generic spawning/progression stay compatible; scoring
+and closure-aware movement are shared by all controllers.
 """
 import argparse
 import json
@@ -20,15 +21,26 @@ from knowledge_base import NODE_HISTORICAL_PROBABILITIES
 from state_schema import DispatchCommand, EMERGENCY_HUBS, HERO_CAMERAS, get_initial_city_state, is_unit_available, make_incident, required_agencies_for_incident
 
 
+SCORING_VERSION = "effectiveness-v2"
+
+
 def effectiveness_score_breakdown(metrics):
-    """Explain the current game score without changing its existing weights."""
+    """Versioned game costs, not operational estimates of lives or monetary loss.
+
+    Accumulated exposure/closure costs persist after resolution. The unresolved
+    liability is a live snapshot cost and becomes the terminal penalty if a match
+    ends now. Resource use stays diagnostic: never reward leaving units idle.
+    """
     components = {"baseline": 100.0, "sla_miss_penalty": -5.0 * metrics["sla_missed_count"],
                   "spillover_penalty": -3.0 * metrics["spillovers_occurred"],
-                  "resolution_reward": float(metrics["incidents_resolved"])}
+                  "resolution_reward": float(metrics["incidents_resolved"]),
+                  "exposure_penalty": -0.04 * metrics.get("severity_tick_exposure", 0.0),
+                  "road_closure_penalty": -0.05 * metrics.get("road_closed_ticks", 0),
+                  "unresolved_penalty": -20.0 * metrics.get("unresolved_incidents", 0)}
     raw = sum(components.values())
-    return {"components": components, "unclamped_score": raw,
-            "overall_score": max(0.0, min(100.0, raw)),
-            "limitations": "Placeholder game weights; exposure, closure duration and resource use are diagnostic, not scored yet"}
+    return {"scoring_version": SCORING_VERSION, "components": components,
+            "unclamped_score": round(raw, 4), "overall_score": round(max(0.0, min(100.0, raw)), 4),
+            "limitations": "Explicit game weights pending scenario-suite calibration; no clinical or operational interpretation"}
 
 
 def _distance(a, b):
@@ -104,10 +116,19 @@ class SheffieldSim:
             self.graph, mode = load_sheffield_graph(download=download)
         else:
             self.graph, mode = graph, graph.graph.get("source", "supplied_graph")
+        metrics = self.state["effectiveness_metrics"]
+        for field, value in (("severity_tick_exposure", 0.0), ("road_closed_ticks", 0),
+                             ("unresolved_incidents", 0), ("resource_busy_ticks", 0)):
+            metrics.setdefault(field, value)
+        self.state["scoring_version"] = SCORING_VERSION
         self.state["routing"] = {"mode": mode, "tick_seconds": 60,
                                  "fallback_reason": self.graph.graph.get("fallback_reason")}
 
     def _nearest(self, point):
+        if point.get("graph_node") in self.graph:
+            node = point["graph_node"]
+            if (point["lat"], point["lon"]) == (self.graph.nodes[node]["y"], self.graph.nodes[node]["x"]):
+                return node
         # Great-circle distance avoids comparing longitude/latitude degrees as metres.
         for mapping in getattr(self, "location_mappings", {}).values():
             if (point["lat"], point["lon"]) == (mapping["lat"], mapping["lon"]):
@@ -159,7 +180,8 @@ class SheffieldSim:
         """Manual road closure for experiments; inference alone must not call this.
 
         Track ownership so clearing this camera does not clear another closure.
-        These affect newly planned routes; mid-trip replanning remains pending.
+        Current travel legs are revalidated each tick; closed occupied segments
+        hold the vehicle until reopened. Other open segments permit a detour.
         """
         if cam_id not in HERO_CAMERAS:
             raise ValueError("Unknown camera")
@@ -301,7 +323,7 @@ class SheffieldSim:
             seconds += float(data["travel_time"])
             cumulative_seconds.append(seconds)
         return {"ticks": max(1, math.ceil(seconds / 60)), "seconds": seconds,
-                "edges": route_edges, "distance_m": distance_m, "path": coordinates, "cumulative_seconds": cumulative_seconds, "destination": {"lat": end["lat"], "lon": end["lon"]}}
+                "edges": route_edges, "nodes": path, "excluded_edges": list(excluded_edges), "distance_m": distance_m, "path": coordinates, "cumulative_seconds": cumulative_seconds, "destination": {"lat": end["lat"], "lon": end["lon"]}}
 
     def estimate_depletion_ticks(self, unit_id, cam_id, severity):
         unit = self.state["resource_db"][unit_id]
@@ -442,10 +464,66 @@ class SheffieldSim:
             metrics["sla_met_count" if response <= 7 else "sla_missed_count"] += 1
             incident["sla_recorded"] = True
 
+    def _ensure_current_route(self, unit, phase):
+        """Reroute from the current road position without snapping across a closure.
+
+        If the occupied edge closes, stay put until reopened. Otherwise finish
+        the open occupied segment then follow an unblocked directed detour.
+        An unreachable destination holds the unit, with ETA explicitly unknown.
+        Future return/hospital legs are checked when they become current.
+        """
+        route = phase["route"]
+        blocked = {tuple(e) for e in self.state["blocked_edges"]} | {tuple(e) for e in route.get("excluded_edges", [])}
+        elapsed = min(route["seconds"], (phase["duration"] - phase["remaining"])*60)
+        times, edges = route["cumulative_seconds"], route.get("edges", [])
+        index = next((i for i in range(len(edges)) if times[i+1] > elapsed + 1e-9), len(edges))
+        if not blocked.intersection(tuple(e) for e in edges[index:]):
+            unit.update(route_blocked=False, eta_status="ESTIMATED")
+            return True
+
+        def hold():
+            unit.update(route_blocked=True, eta_status="UNKNOWN_BLOCKED")
+            unit["blocked_wait_ticks"] = unit.get("blocked_wait_ticks", 0) + 1
+            return False
+
+        current = tuple(edges[index])
+        partway = elapsed > times[index] + 1e-9
+        if partway and current in blocked:
+            return hold()
+        anchor = current[1] if partway else current[0]
+        point = {"graph_node": anchor, "lat": self.graph.nodes[anchor]["y"], "lon": self.graph.nodes[anchor]["x"]}
+        try:
+            suffix = self._route(point, route["destination"], route.get("excluded_edges", []))
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            return hold()
+        if partway:
+            prefix_seconds = times[index+1] - elapsed
+            span = times[index+1] - times[index]
+            prefix_distance = float(self.graph.edges[current].get("length", 0)) * prefix_seconds/span if span else 0
+            replacement = {**suffix,
+                "seconds": prefix_seconds + suffix["seconds"],
+                "distance_m": prefix_distance + suffix["distance_m"],
+                "edges": [current] + suffix["edges"],
+                "nodes": [current[0]] + suffix["nodes"],
+                "path": [[unit["lon"], unit["lat"]]] + suffix["path"],
+                "cumulative_seconds": [0.0, prefix_seconds] + [prefix_seconds+t for t in suffix["cumulative_seconds"][1:]]}
+            replacement["ticks"] = max(1, math.ceil(replacement["seconds"]/60))
+        else:
+            replacement = suffix
+        unit[phase["timer"]] += replacement["ticks"] - phase["remaining"]
+        phase.update(route=replacement, duration=replacement["ticks"], remaining=replacement["ticks"])
+        unit.update(route_blocked=False, eta_status="ESTIMATED")
+        unit["reroute_count"] = unit.get("reroute_count", 0) + 1
+        self._sync_total(unit)
+        return True
+
     def _advance_unit(self, unit):
         if is_unit_available(unit):
             return
         phase = unit["phases"][0]
+        if "route" in phase and not self._ensure_current_route(unit, phase):
+            self._sync_total(unit)
+            return
         incident = self.state["active_incidents"].get(unit["assigned_cam"])
         holding_flood = (incident and incident.get("progression_model") == "park_square_flood_v1"
                          and incident["status"] != "RESOLVED")
@@ -483,6 +561,8 @@ class SheffieldSim:
 
     def tick(self, spawn=True):
         self.state["tick"] += 1
+        self.state["effectiveness_metrics"]["resource_busy_ticks"] += sum(
+            not is_unit_available(u) for u in self.state["resource_db"].values())
         for unit in self.state["resource_db"].values():
             self._advance_unit(unit)
         for cam_id, incident in self.state["active_incidents"].items():
@@ -513,6 +593,10 @@ class SheffieldSim:
         if spawn:
             self._spawn()
         metrics = self.state["effectiveness_metrics"]
+        active = [i for i in self.state["active_incidents"].values() if i["status"] != "RESOLVED"]
+        metrics["severity_tick_exposure"] += sum(i.get("water_level", i["severity"]) for i in active)
+        metrics["road_closed_ticks"] += sum(i["road_blocked"] for i in active)
+        metrics["unresolved_incidents"] = len(active)
         metrics["overall_score"] = effectiveness_score_breakdown(metrics)["overall_score"]
         return self.state
 
