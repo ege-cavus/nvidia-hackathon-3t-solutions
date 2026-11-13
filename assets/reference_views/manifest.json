@@ -1,0 +1,125 @@
+{
+  "status": "REAL_LOCATION_REFERENCE_PHOTOS",
+  "limitations": [
+    "Not live CCTV feeds or verified hero-camera viewpoints",
+    "Capture dates vary; current road layout must be checked",
+    "No generated hazard imagery is included in this folder"
+  ],
+  "items": [
+    {
+      "title": "File:Sheffield Railway Station.jpg",
+      "width": 3192,
+      "height": 1836,
+      "url": "https://upload.wikimedia.org/wikipedia/commons/b/b1/Sheffield_Railway_Station.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/Sheffield_Railway_Station.jpg/1920px-Sheffield_Railway_Station.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Sheffield_Railway_Station.jpg",
+      "license": "CC BY-SA 3.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/3.0",
+      "creator": "Brendan De Souza",
+      "description": "The facade of Sheffield Railway Station in the city of Sheffield, UK. In the foreground is Sheaf Square, which in recent years has been redeveloped to improve the entrance to the station.",
+      "date": "2011-04-20",
+      "suggested_camera_id": "CAM_01",
+      "path": "assets/reference_views/sheffield_station.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b1/Sheffield_Railway_Station.jpg/1920px-Sheffield_Railway_Station.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloaded_at": "2026-11-13T14:37:57.454895+00:00",
+      "downloaded_dimensions": [
+        1920,
+        1104
+      ],
+      "sha256": "b8ae7a908bebea57be13ac9c8ee34e99d6a1282c6c969caf66173ef8c8deff13",
+      "viewpoint_match": "AREA_REFERENCE_NOT_VERIFIED_CCTV"
+    },
+    {
+      "title": "File:Park Square roundabout - geograph.org.uk - 6539765.jpg",
+      "width": 3337,
+      "height": 1595,
+      "url": "https://upload.wikimedia.org/wikipedia/commons/3/34/Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg/1920px-Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "creator": "Chris Morgan",
+      "description": "Park Square roundabout\u00a0",
+      "date": "2020-07-17",
+      "suggested_camera_id": "CAM_08",
+      "path": "assets/reference_views/park_square.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/3/34/Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg/1920px-Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloaded_at": "2026-11-13T14:37:57.793119+00:00",
+      "downloaded_dimensions": [
+        1920,
+        918
+      ],
+      "sha256": "b0711e7ea8d846e9bef7bf7a5a3f8fe5cd98c6247511439c5a6eb1ddc415216f",
+      "viewpoint_match": "AREA_REFERENCE_NOT_VERIFIED_CCTV"
+    },
+    {
+      "title": "File:Shalesmoor Corner, Penistone Road, Sheffield - geograph.org.uk - 3743393.jpg",
+      "width": 4608,
+      "height": 3072,
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/aa/Shalesmoor_Corner%2C_Penistone_Road%2C_Sheffield_-_geograph.org.uk_-_3743393.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Shalesmoor_Corner%2C_Penistone_Road%2C_Sheffield_-_geograph.org.uk_-_3743393.jpg/1920px-Shalesmoor_Corner%2C_Penistone_Road%2C_Sheffield_-_geograph.org.uk_-_3743393.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Shalesmoor_Corner,_Penistone_Road,_Sheffield_-_geograph.org.uk_-_3743393.jpg",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "creator": "Terry Robinson",
+      "description": "Shalesmoor Corner, Penistone Road, Sheffield\u00a0",
+      "date": "2013-10-24",
+      "suggested_camera_id": "CAM_10",
+      "path": "assets/reference_views/shalesmoor_penistone_road.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/a/aa/Shalesmoor_Corner%2C_Penistone_Road%2C_Sheffield_-_geograph.org.uk_-_3743393.jpg/1920px-Shalesmoor_Corner%2C_Penistone_Road%2C_Sheffield_-_geograph.org.uk_-_3743393.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloaded_at": "2026-11-13T14:37:59.980602+00:00",
+      "downloaded_dimensions": [
+        1920,
+        1280
+      ],
+      "sha256": "66ffa4ff267ce636a58c66d98402d7aa87034ab87e29383fedf25cd75f436433",
+      "viewpoint_match": "AREA_REFERENCE_NOT_VERIFIED_CCTV"
+    },
+    {
+      "title": "File:Sheffield Parkway - geograph.org.uk - 1924193.jpg",
+      "width": 640,
+      "height": 426,
+      "url": "https://upload.wikimedia.org/wikipedia/commons/8/89/Sheffield_Parkway_-_geograph.org.uk_-_1924193.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_url": "https://upload.wikimedia.org/wikipedia/commons/8/89/Sheffield_Parkway_-_geograph.org.uk_-_1924193.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail_unscaled",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Sheffield_Parkway_-_geograph.org.uk_-_1924193.jpg",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "creator": "Richard Croft",
+      "description": "Sheffield Parkway\u00a0",
+      "date": "2010-06-17",
+      "suggested_camera_id": "CAM_13",
+      "path": "assets/reference_views/sheffield_parkway.jpg",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/8/89/Sheffield_Parkway_-_geograph.org.uk_-_1924193.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "downloaded_at": "2026-11-13T14:38:00.325367+00:00",
+      "downloaded_dimensions": [
+        640,
+        426
+      ],
+      "sha256": "d1b2edf4be2bbd067d30a97465307001ba5c5db2c44cfa070cb694ca9006fdbb",
+      "viewpoint_match": "AREA_REFERENCE_NOT_VERIFIED_CCTV"
+    },
+    {
+      "title": "File:Meadowhall Way, Sheffield - geograph.org.uk - 8217997.jpg",
+      "width": 3417,
+      "height": 2563,
+      "url": "https://upload.wikimedia.org/wikipedia/commons/b/b7/Meadowhall_Way%2C_Sheffield_-_geograph.org.uk_-_8217997.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=original",
+      "preview_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b7/Meadowhall_Way%2C_Sheffield_-_geograph.org.uk_-_8217997.jpg/1920px-Meadowhall_Way%2C_Sheffield_-_geograph.org.uk_-_8217997.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Meadowhall_Way,_Sheffield_-_geograph.org.uk_-_8217997.jpg",
+      "license": "CC BY-SA 2.0",
+      "license_url": "https://creativecommons.org/licenses/by-sa/2.0",
+      "creator": "habiloid",
+      "description": "Meadowhall Way, Sheffield\u00a0",
+      "date": "2025-12-22",
+      "suggested_camera_id": "CAM_21",
+      "path": "assets/reference_views/meadowhall_way.jpg",
+      "download_url": "https://thumb.wikimedia.org/wikipedia/commons/thumb/b/b7/Meadowhall_Way%2C_Sheffield_-_geograph.org.uk_-_8217997.jpg/1920px-Meadowhall_Way%2C_Sheffield_-_geograph.org.uk_-_8217997.jpg?utm_source=commons.wikimedia.org&utm_campaign=imageinfo&utm_content=thumbnail",
+      "downloaded_at": "2026-11-13T14:38:02.503370+00:00",
+      "downloaded_dimensions": [
+        1920,
+        1440
+      ],
+      "sha256": "ddc843b34e22f6d39ea558b259ef2573c15f66e44b00e79d2576be0bcd7296f5",
+      "viewpoint_match": "AREA_REFERENCE_NOT_VERIFIED_CCTV"
+    }
+  ]
+}
