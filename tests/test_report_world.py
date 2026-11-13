@@ -107,3 +107,48 @@ class ReportWorldTests(unittest.TestCase):
             for report in w.reports:
                 exported=json.loads((Path(folder)/f"{report['incident_id']}.json").read_text())
                 self.assertTrue(w.validate_report(exported))
+
+    def test_follow_up_bundle_arrives_without_duplicating_incident(self):
+        bundle=DEFAULT_SCENARIO.parent/"same_incident_reports.json"
+        w=ReportDrivenWorld(graph=self.graph,follow_up_path=bundle)
+        self.assertEqual(len(w.follow_up_reports),0)
+        w.tick()
+        self.assertEqual(len(w.follow_up_reports),4)
+        w.tick();w.tick()
+        self.assertEqual(len(w.follow_up_reports),12)
+        self.assertEqual(len(w.reports),4)
+        self.assertEqual(len(w.state["active_incidents"]),4)
+        self.assertEqual(w.state["effectiveness_metrics"]["incidents_resolved"],0)
+        for item in w.follow_up_reports:
+            self.assertTrue(w.validate_report(item["report"]))
+            self.assertEqual(item["report"]["incident_id"],20261113000001)
+
+    def test_follow_up_does_not_rewrite_world_or_root_report(self):
+        w=self.world();w.tick()
+        report=deepcopy(w.reports[0]);report["received_at"]="2026-11-13T09:00:30Z"
+        report["description"]="SYNTHETIC alternative caller observation"
+        before=deepcopy(w.state);root=deepcopy(w.reports[0])
+        w.ingest_follow_up(report,"CALL_1")
+        self.assertEqual(w.state,before)
+        self.assertEqual(w.reports[0],root)
+        observation=w.qwen_follow_up_observation("CALL_1")
+        self.assertEqual(observation["report"]["description"],report["description"])
+        self.assertEqual(observation["media"]["reference_time"],root["received_at"])
+        self.assertNotIn("required_units",str(observation))
+        with self.assertRaises(ValueError):w.ingest_follow_up(report,"CALL_1")
+
+    def test_follow_up_rejects_future_and_unknown_incident(self):
+        w=self.world();report=deepcopy(w.reports[0]);report["received_at"]="2026-11-13T09:01:00Z"
+        with self.assertRaises(ValueError):w.ingest_follow_up(report,"FUTURE")
+        report["received_at"]=w.reports[0]["received_at"];report["incident_id"]=20261113999999
+        with self.assertRaises(ValueError):w.ingest_follow_up(report,"UNKNOWN")
+        self.assertEqual(w.follow_up_reports,[])
+
+    def test_follow_up_bundle_preserves_spread_timing(self):
+        a=self.world()
+        b=ReportDrivenWorld(graph=self.graph,follow_up_path=DEFAULT_SCENARIO.parent/"same_incident_reports.json")
+        for _ in range(6):a.tick();b.tick()
+        self.assertEqual(a.spread_events,b.spread_events)
+        self.assertEqual(a.state,b.state)
+        self.assertEqual(a.reports,b.reports)
+        self.assertEqual(len(b.follow_up_reports),12)

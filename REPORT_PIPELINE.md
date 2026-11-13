@@ -105,3 +105,31 @@ python cosmos_client.py --dry-run
 These prompts generate illustrative synthetic views, not verified reproductions
 of Sheffield CCTV. Review images before feeding them to Qwen. Live generation is
 separate from the report-world clock; a render must not advance scenario time.
+
+## Multiple callers reporting the same incident
+
+assets/scenarios/sheffield_reports_demo/same_incident_reports.json contains twelve
+slightly varied caller reports about the original station fire. Each report still
+validates against the supplied schema and carries the same canonical incident_id.
+The bundle's report_links array assigns unique observation_id values outside the
+caller report object. Wording, channel, viewpoint, reported severity and unknown
+casualty details vary; none is asserted to be new world truth.
+
+Run the scheduled observations after the main report is ingested:
+
+```powershell
+python report_world.py --ticks 3 --follow-up-bundle assets/scenarios/sheffield_reports_demo/same_incident_reports.json --output demo_output/follow-ups
+```
+
+Four observations arrive per minute, twelve by tick3. They attach to the existing
+incident, do not increase incident counts, do not change resources/score/spread,
+and do not overwrite the first caller's report. The world exports follow_up_reports
+and follow_up_observations separately. Ingestion rejects unknown canonical IDs,
+duplicate observation IDs and reports arriving before the original or in the future.
+
+Track2 should deduplicate follow-ups by observation_id, not incident_id, and use
+qwen_follow_up_observation(id) when reviewing new caller evidence. Its image is
+explicitly a reference to the original report/time, not a fresh capture. Decide
+whether corroboration warrants another Qwen call separately from world truth.
+Production storage should use a separate observation row/ID referencing the
+canonical incident, rather than attempting duplicate incident primary keys.

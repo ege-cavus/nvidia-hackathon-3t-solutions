@@ -19,7 +19,7 @@ DEFAULT_SCENARIO = ROOT / "assets/scenarios/sheffield_reports_demo/scenario.json
 
 
 class ReportDrivenWorld(SheffieldSim):
-    def __init__(self, scenario_path=DEFAULT_SCENARIO, graph=None):
+    def __init__(self, scenario_path=DEFAULT_SCENARIO, graph=None, follow_up_path=None):
         self.scenario_path = Path(scenario_path)
         self.scenario = json.loads(self.scenario_path.read_text(encoding="utf-8"))
         schema_path = (self.scenario_path.parent / self.scenario["schema"]).resolve()
@@ -45,10 +45,14 @@ class ReportDrivenWorld(SheffieldSim):
             graph, _ = load_sheffield_graph(strict=True)
         super().__init__(graph=graph)
         self.reports, self.response_events, self.spread_events = [], [], []
+        self.follow_up_reports, self._follow_up_observations = [], {}
+        self._follow_up_bundle = json.loads(Path(follow_up_path).read_text()) if follow_up_path else None
+        self._received_follow_ups = set()
         self._reports_by_id, self._observations, self._work, self._contained = {}, {}, {}, set()
         self._finished_rules, self._ingested_initial = set(), set()
         self.state["world_mode"] = "AUTHORED_REPORTS"
         self._receive_due_initial()
+        self._receive_due_follow_ups()
 
     def timestamp(self):
         return (self.base_time + timedelta(seconds=60*self.state["tick"])).isoformat().replace("+00:00", "Z")
@@ -107,6 +111,59 @@ class ReportDrivenWorld(SheffieldSim):
             if index not in self._ingested_initial and entry["at_tick"] <= self.state["tick"]:
                 self.ingest_report(entry["report"], entry["node_id"])
                 self._ingested_initial.add(index)
+
+    def ingest_follow_up(self, report, observation_id):
+        """Attach another caller observation, preserving canonical world truth."""
+        self.validate_report(report)
+        if not isinstance(observation_id,str) or not observation_id.strip():
+            raise ValueError("A distinct observation_id is required")
+        if observation_id in self._follow_up_observations:
+            raise ValueError("Duplicate observation_id")
+        canonical = self._reports_by_id.get(report["incident_id"])
+        if canonical is None:
+            raise ValueError("Ingest the main incident before its follow-ups")
+        received = datetime.fromisoformat(report["received_at"].replace("Z","+00:00"))
+        first = datetime.fromisoformat(canonical["received_at"].replace("Z","+00:00"))
+        if received < first or received > self.base_time+timedelta(seconds=60*self.state["tick"]):
+            raise ValueError("Follow-up must arrive after the main report and not in the future")
+        observation = deepcopy(self._observations[report["incident_id"]])
+        observation.update(observation_id=observation_id, report=deepcopy(report), observed_at=report["received_at"],
+                           relationship="FOLLOW_UP_SAME_INCIDENT")
+        observation["graph_context"].update(as_of=self.timestamp(),blocked_edges=deepcopy(self.state["blocked_edges"]))
+        observation["media"]["reference_time"] = canonical["received_at"]
+        # The original incident image is a reference, not a newly captured frame.
+        observation["media"]["reference_incident_id"] = report["incident_id"]
+        self.follow_up_reports.append({"observation_id":observation_id,"report":deepcopy(report)})
+        self._follow_up_observations[observation_id] = observation
+        return deepcopy(observation)
+
+    def _receive_due_follow_ups(self):
+        bundle = self._follow_up_bundle
+        if bundle is None:return
+        if bundle.get("bundle_type") != "FOLLOW_UP_SAME_INCIDENT":
+            raise ValueError("Expected same-incident follow-up bundle")
+        reports,links = bundle["reports"],bundle["report_links"]
+        main=self._observations.get(bundle["canonical_incident_id"])
+        if main and main["graph_context"]["node_id"] != bundle["node_id"]:
+            raise ValueError("Follow-up bundle node does not match the main incident")
+        if sorted(link["report_index"] for link in links) != list(range(len(reports))) or len({link["observation_id"] for link in links}) != len(links):
+            raise ValueError("Each report needs one unique observation link")
+        now = self.base_time+timedelta(seconds=60*self.state["tick"])
+        for link in links:
+            index=link["report_index"]
+            report=reports[index]
+            self.validate_report(report)
+            if report["incident_id"] != bundle["canonical_incident_id"]:
+                raise ValueError("Follow-up points to a different incident")
+            if index not in self._received_follow_ups and datetime.fromisoformat(report["received_at"].replace("Z","+00:00")) <= now:
+                self.ingest_follow_up(report,link["observation_id"])
+                self._received_follow_ups.add(index)
+
+    def qwen_follow_up_observation(self, observation_id):
+        observation = deepcopy(self._follow_up_observations[observation_id])
+        image=ROOT/observation["media"]["image_path"]
+        observation["media"]["status"]="LOCAL_IMAGE" if image.is_file() else "MISSING_PREGENERATED_IMAGE"
+        return observation
 
     def qwen_observation(self, incident_id):
         """Whitelist observations; never include spread/evaluation answer keys."""
@@ -200,6 +257,7 @@ class ReportDrivenWorld(SheffieldSim):
         m["resource_busy_ticks"] += sum(not is_unit_available(u) for u in self.state["resource_db"].values())
         for unit in self.state["resource_db"].values():self._advance_unit(unit)
         self._receive_due_initial()
+        self._receive_due_follow_ups()
         for node,incident in list(self.state["active_incidents"].items()):
             if incident["status"] == "RESOLVED":continue
             self._apply_observed_response(node,incident)
@@ -221,7 +279,10 @@ class ReportDrivenWorld(SheffieldSim):
             (directory/f"{report['incident_id']}.json").write_text(json.dumps(report,indent=2)+"\n",encoding="utf-8")
         observations = [self.qwen_observation(r["incident_id"]) for r in self.reports]
         (directory/"observations.json").write_text(json.dumps(observations,indent=2)+"\n",encoding="utf-8")
-        result = {"tick":self.state["tick"],"reports":len(self.reports),"spread_events":self.spread_events,
+        follow_up_observations=[self.qwen_follow_up_observation(item["observation_id"]) for item in self.follow_up_reports]
+        (directory/"follow_up_reports.json").write_text(json.dumps(self.follow_up_reports,indent=2)+"\n",encoding="utf-8")
+        (directory/"follow_up_observations.json").write_text(json.dumps(follow_up_observations,indent=2)+"\n",encoding="utf-8")
+        result = {"follow_up_reports":len(self.follow_up_reports),"tick":self.state["tick"],"reports":len(self.reports),"spread_events":self.spread_events,
                   "response_events":self.response_events,"score_breakdown":effectiveness_score_breakdown(self.state["effectiveness_metrics"])}
         (directory/"world_events.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
         return result
@@ -246,12 +307,13 @@ def scripted_response(world):
 if __name__ == "__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scenario",type=Path,default=DEFAULT_SCENARIO)
+    parser.add_argument("--follow-up-bundle",type=Path,help="Scheduled additional caller reports; they do not create new incidents")
     parser.add_argument("--ticks",type=int,default=12)
     parser.add_argument("--scripted-response",action="store_true")
     parser.add_argument("--output",type=Path,default=ROOT/"demo_output/reports")
     args=parser.parse_args()
     if args.ticks<0:parser.error("--ticks must be nonnegative")
-    world=ReportDrivenWorld(args.scenario)
+    world=ReportDrivenWorld(args.scenario,follow_up_path=args.follow_up_bundle)
     for _ in range(args.ticks):
         if args.scripted_response:scripted_response(world)
         world.tick()
