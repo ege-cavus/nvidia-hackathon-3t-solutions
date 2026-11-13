@@ -21,7 +21,7 @@
   --ok: #4cc38a; --warn: #f2b33d; --bad: #ff5f61;
   --police: #3b7cf4; --ambulance: #35b376; --fire: #ec5b56; --shared: #9a6ad6; --cr: #e6edf0; --rules: #7d97a2;
   --r: 8px; --font: "Overpass", "Segoe UI", system-ui, sans-serif; --mono: "Overpass Mono", ui-monospace, monospace; --serif: "Newsreader", Georgia, serif;
-  --head-h: 52px; --band-h: 122px; --foot-h: 26px;
+  --head-h: 52px; --band-h: 122px; --foot-h: 26px; --col-l: 300px; --col-r: 390px;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -86,12 +86,12 @@ table.matrix th:first-child, table.matrix td:first-child { text-align: left; pad
 table.matrix td { text-align: right; padding: 3px 10px; font-weight: 700; white-space: nowrap; }
 table.matrix tr + tr td { border-top: 1px solid var(--line); }
 .ag-name { display: inline-flex; align-items: center; gap: 7px; font-weight: 700; }
-.ag-name svg { width: 18px; height: 18px; }
+.ag-name svg { width: 22px; height: 22px; }
 .bar { display: inline-block; width: 46px; height: 5px; border-radius: 3px; background: var(--line-2); vertical-align: middle; margin-right: 7px; overflow: hidden; }
 .bar span { display: block; height: 100%; border-radius: 3px; }
 
 /* Three-column wall */
-.wall { display: grid; grid-template-columns: 300px minmax(0, 1fr) 390px; height: calc(100vh - var(--head-h) - var(--band-h) - var(--foot-h) - var(--alerts-h, 0px)); min-height: 520px; }
+.wall { display: grid; grid-template-columns: var(--col-l) minmax(0, 1fr) var(--col-r); height: calc(100vh - var(--head-h) - var(--band-h) - var(--foot-h) - var(--alerts-h, 0px)); min-height: 520px; }
 .side { overflow-y: auto; padding: 12px 14px; border-right: 1px solid var(--line); }
 .rail { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
 .head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
@@ -136,7 +136,7 @@ table.matrix tr + tr td { border-top: 1px solid var(--line); }
 .legend i { display: inline-block; flex: none; }
 .k-inc { width: 14px; height: 14px; border-radius: 50%; background: var(--ok); border: 2px solid var(--ink); }
 .k-merged { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--ink-2); }
-.k-station { width: 16px; height: 16px; border-radius: 50%; background: var(--police); }
+.k-station { width: 16px; height: 16px; border-radius: 50%; background: var(--police); border: 2px solid var(--ink); }
 .k-line { width: 18px; height: 3px; background: var(--fire); }
 .k-cordon { width: 18px; height: 0; border-top: 2px dashed var(--ink-2); }
 .mk-inc { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13px; color: #08161d; border: 2.5px solid var(--ink); cursor: pointer; padding: 0; }
@@ -144,8 +144,8 @@ table.matrix tr + tr td { border-top: 1px solid var(--line); }
 .mk-inc.live { animation: ring 1.4s ease-out infinite; }
 @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(52, 195, 176, 0.75); } 100% { box-shadow: 0 0 0 14px rgba(52, 195, 176, 0); } }
 .mk-merged { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink-2); background: var(--ground); cursor: pointer; }
-.mk-st { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid rgba(255, 255, 255, 0.85); }
-.mk-st svg { width: 15px; height: 15px; }
+.mk-st { position: relative; width: 30px; height: 30px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.9); cursor: default; }
+.mk-st svg { position: absolute; left: 50%; top: 50%; width: 20px; height: 20px; transform: translate(-50%, -50%); }
 .mk-st.empty { opacity: 0.4; }
 .line-label { font-size: 11.5px; font-weight: 700; padding: 0 6px; border-radius: 4px; background: var(--panel); border: 1px solid var(--c); color: var(--ink); white-space: nowrap; pointer-events: none; }
 .tip .maplibregl-popup-content { background: var(--panel); color: var(--ink); border: 1px solid var(--line-2); padding: 5px 9px; font-size: 12.5px; border-radius: var(--r); }
@@ -220,7 +220,7 @@ table.data .num { text-align: right; }
 .net-edge.soft { stroke: var(--warn); stroke-dasharray: 4 4; stroke-width: 2; }
 .net-node { cursor: pointer; }
 .net-node .disc { stroke-width: 2; }
-.net-node.idle { opacity: 0.32; }
+.net-node.idle { opacity: 0.3; filter: grayscale(1); }
 .net-node.picked .disc { stroke-width: 3.5; }
 .net-node .working { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 6; transform-box: fill-box; transform-origin: center; animation: spin 2.4s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -313,9 +313,27 @@ body.brief { background: #15181b; color: #ece9e2; }
 .b-log time { font: 12px var(--mono); color: var(--mute); padding-top: 3px; }
 .b-log .flag { color: var(--bad); }
 
-@media (max-width: 1280px) { .wall { grid-template-columns: 270px minmax(0, 1fr) 350px; } .two { grid-template-columns: 1fr; } .band { grid-template-columns: 250px minmax(0, 1fr); } }
+/* View: every panel can be hidden; the layout closes up around it. */
+body.hide-calls .side, body.hide-matrix .band, body.hide-agents .agents, body.hide-log .log-panel, body.hide-alerts .alerts,
+body.hide-legend .legend, body.hide-details .drawer, body.hide-rail .rail { display: none !important; }
+/* Fixed columns, so hiding one panel never shifts the others into its track. */
+.side { grid-column: 1; } .centre { grid-column: 2; } .rail { grid-column: 3; }
+body.hide-calls { --col-l: 0px; } body.hide-rail { --col-r: 0px; } body.hide-matrix { --band-h: 0px; } body.hide-alerts { --alerts-h: 0px; }
+.band { position: relative; }
+.panel-hide { margin-left: auto; background: none; border: 0; color: var(--mute); font-size: 12px; font-weight: 700; cursor: pointer; padding: 2px 4px; }
+.panel-hide:hover { color: var(--ink); }
+.band .panel-hide { position: absolute; right: 10px; top: 6px; }
+.view-menu { position: relative; }
+.view-menu > summary { list-style: none; }
+.view-menu > summary::-webkit-details-marker { display: none; }
+.view-menu .menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 8px 12px; display: grid; gap: 6px; min-width: 210px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.view-menu label { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.view-menu input { accent-color: var(--accent); }
+
+@media (max-width: 1280px) { :root { --col-l: 270px; --col-r: 350px; } .two { grid-template-columns: 1fr; } .band { grid-template-columns: 250px minmax(0, 1fr); } }
 @media (max-width: 1050px) {
-  .wall { grid-template-columns: 250px minmax(0, 1fr); height: auto; }
+  :root { --col-l: 250px; } .wall { grid-template-columns: var(--col-l) minmax(0, 1fr); height: auto; }
   .side, .centre { height: calc(100vh - var(--head-h) - var(--band-h)); }
   .rail { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); max-height: 80vh; }
   .band { height: auto; grid-template-columns: 1fr; } .city { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -324,7 +342,8 @@ body.brief { background: #15181b; color: #ece9e2; }
   .topbar { height: auto; flex-wrap: wrap; padding: 10px 14px; }
   .actions { margin-left: 0; flex-wrap: wrap; }
   .matrix-wrap { overflow-x: auto; }
-  .wall { grid-template-columns: 1fr; }
+  .wall { grid-template-columns: minmax(0, 1fr); }
+  .side, .centre, .rail { grid-column: 1; }
   .side { height: auto; max-height: 50vh; border-right: 0; }
   .centre { height: auto; } .mapwrap { height: 60vh; flex: none; }
   .legend { display: none; } .grid2, .grid4 { grid-template-columns: 1fr 1fr; }
@@ -344,19 +363,21 @@ body.brief { background: #15181b; color: #ece9e2; }
       <button class="btn" id="btnBurst" type="button" title="Several near-simultaneous calls about one incident">Burst calls</button>
       <button class="btn" id="btnCall" type="button" title="New call (N)">+ New call</button>
       <button class="btn" id="btnRes" type="button" title="Resources (R)">Resources</button>
+      <details class="view-menu" id="viewMenu"><summary class="btn" title="Show or hide panels">View</summary><div class="menu" id="viewList" role="group" aria-label="Panels"></div></details>
       <button class="btn" id="btnSettings" type="button" aria-label="Settings" title="Settings">⚙</button>
     </div>
   </header>
   <div class="alerts" id="alerts" role="region" aria-label="Needs action" hidden></div>
 
   <section class="band" aria-label="Sheffield success matrix">
+    <button class="panel-hide" type="button" data-hide="matrix">Hide</button>
     <div class="city" id="city" title="Response success: share of scored calls the evaluation rated fully resourced."></div>
     <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
   </section>
 
   <main class="wall">
     <aside class="side" aria-label="Calls">
-      <div class="head"><span class="label">Calls</span><span class="small muted" id="callCount"></span></div>
+      <div class="head"><span class="label">Calls</span><span class="small muted" id="callCount"></span><button class="panel-hide" type="button" data-hide="calls">Hide</button></div>
       <div class="chips" id="chips" role="group" aria-label="Filter by incident type"></div>
       <div id="calls"></div>
       <details class="fold"><summary>Merged duplicate reports <span id="mergedCount">(0)</span></summary><div id="merged"></div></details>
@@ -387,6 +408,7 @@ body.brief { background: #15181b; color: #ece9e2; }
           <span class="label">Agents at work</span>
           <span class="inc" id="netTitle"></span>
           <button class="btn small ghost" id="replayBtn" type="button" title="Replay how the agents handled this call">Replay</button>
+          <button class="panel-hide" type="button" data-hide="agents" style="margin-left:0">Hide</button>
         </div>
         <svg id="net" viewBox="0 0 360 272" role="group" aria-label="Qwen, A1 Police, A2 Ambulance, A3 Fire and CR working on one call">
           <g id="netEdges"></g><g id="netPk" class="pk"></g><g id="netNodes"></g>
@@ -527,16 +549,22 @@ const SOFT = { ENTRY_RESTRICTED_BUT_REQUIRED: "Entry restricted, but another age
   UNROUTED_AGENCY_NEEDED: "An agency is needed but was not routed", NEED_WITHOUT_RESOURCES: "A need nobody is resourcing" };
 const SEVERITY_TEXT = { 1: "minor", 2: "moderate", 3: "serious", 4: "severe", 5: "major incident" };
 const SEV_COLOR = { 5: "#ff5f61", 4: "#ff8a45", 3: "#f2b33d", 2: "#9fb4bd", 1: "#6f8792" };
-// Line icons (24x24, stroke): the three agencies' vehicles, Qwen as a routing hub, CR as scales.
+// Solid silhouettes (24x24, even-odd cut-outs), legible at 16-30px: a police car with a light bar, an
+// ambulance with a cross, a fire engine with a ladder, a drone for shared assets, Qwen as a hub, CR as scales.
 const GLYPH = {
-  police: [["path", "M3 16.5v-3.6l2.4-4.4h13.2l2.4 4.4v3.6z"], ["path", "M9 6h6M12 6V4.5"], ["path", "M3 13h18"], ["circle", 7, 17, 1.8], ["circle", 17, 17, 1.8]],
-  ambulance: [["path", "M2.5 16.5V7h11v9.5"], ["path", "M13.5 10h4l3 3.4v3.1h-7"], ["path", "M8 9.3v4.4M5.8 11.5h4.4"], ["circle", 6.5, 17, 1.8], ["circle", 17, 17, 1.8]],
-  fire: [["path", "M2.5 16.5v-6h11v6"], ["path", "M13.5 9.5h4.2l2.8 3.6v3.4h-7"], ["path", "M2.5 7.8 13 4.2M5.3 6.9l.4 1.2M8.2 5.9l.4 1.2M11.1 4.9l.4 1.2"], ["circle", 6.5, 17, 1.8], ["circle", 17, 17, 1.8]],
-  shared: [["path", "M12 3l8 4.6v8.8L12 21l-8-4.6V7.6z"]],
-  Qwen: [["circle", 12, 12, 2.6], ["path", "M12 9.4V5.6M12 14.6v3.8M9.4 12H5.6M14.6 12h3.8"], ["circle", 12, 4, 1.6], ["circle", 12, 20, 1.6], ["circle", 4, 12, 1.6], ["circle", 20, 12, 1.6]],
-  CR: [["path", "M12 4v15M7.5 19.5h9M5 7.5h14M12 5.5"], ["path", "M5 7.5 2.6 13h4.8zM19 7.5 16.6 13h4.8z"]],
+  police: [["path", "M2.5 16.2v-3.3c0-.6.4-1.1 1-1.2l2.6-.6 2.4-3.6c.3-.4.8-.7 1.3-.7h4.4c.5 0 1 .3 1.3.7l2.4 3.6 2.6.6c.6.1 1 .6 1 1.2v3.3zM9.7 8.4h1.9v2.9H7.9zM13.4 8.4h1.9l1.8 2.9h-3.7z"],
+    ["path", "M10 4.4h4v2h-4z"], ["circle", 7, 16.6, 2.1], ["circle", 17, 16.6, 2.1]],
+  ambulance: [["path", "M1.5 6.2h12.8v10.6H1.5zM6.6 8.3h2v2.3h2.3v2H8.6v2.3h-2v-2.3H4.3v-2h2.3z"], ["path", "M14.8 9.2h4.1l3.6 3.9v3.7h-7.7zM16.2 10.5h2.2l1.9 2.1h-4.1z"],
+    ["circle", 5.5, 17.3, 2.1], ["circle", 17.8, 17.3, 2.1]],
+  fire: [["path", "M1.5 10.3h13v6.5h-13z"], ["path", "M15 8.2h4l3.5 4.3v4.3H15zM16.4 9.6h2.1l1.9 2.4h-4z"], ["path", "M1.8 7.7 13.4 4.4l.5 1.6L2.3 9.3zM10.6 6.6h1.7v3.7h-1.7z"],
+    ["circle", 4.8, 17.4, 1.9], ["circle", 9.6, 17.4, 1.9], ["circle", 18.6, 17.4, 1.9]],
+  shared: [["path", "M9.6 9.6h4.8v4.8H9.6zM5.4 6.5l1.1-1.1L12 10.9l5.5-5.5 1.1 1.1L13.1 12l5.5 5.5-1.1 1.1L12 13.1l-5.5 5.5-1.1-1.1L10.9 12z"],
+    ["circle", 6, 6, 2.6], ["circle", 18, 6, 2.6], ["circle", 6, 18, 2.6], ["circle", 18, 18, 2.6]],
+  Qwen: [["path", "M11.2 5h1.6v14h-1.6zM5 11.2h14v1.6H5z"], ["circle", 12, 12, 3.4], ["circle", 12, 3.8, 2.3], ["circle", 12, 20.2, 2.3], ["circle", 3.8, 12, 2.3], ["circle", 20.2, 12, 2.3]],
+  CR: [["path", "M11.2 4.5h1.6v14h-1.6zM7 18.3h10v2.2H7zM4 6.6h16v1.7H4z"], ["path", "M5 8.3 2.2 13.6h5.6zM19 8.3l-2.8 5.3h5.6z"],
+    ["path", "M2 13.6h6a3 3 0 0 1-6 0zM16 13.6h6a3 3 0 0 1-6 0z"], ["circle", 12, 4.2, 1.6]],
 };
-const glyph = (key, x, y, size, color) => sv("g", { transform: `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`, fill: "none", stroke: color, "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round" },
+const glyph = (key, x, y, size, color) => sv("g", { transform: `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`, fill: color, "fill-rule": "evenodd" },
   (GLYPH[key] || GLYPH.shared).map(([t, ...a]) => (t === "path" ? sv("path", { d: a[0] }) : sv("circle", { cx: a[0], cy: a[1], r: a[2] }))));
 const glyphSvg = (key, color) => sv("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }, glyph(key, 12, 12, 24, color));
 
@@ -794,7 +822,8 @@ function renderAlerts() {
   el.replaceChildren(...[toast && h("b", { style: "color:var(--bad)" }, toast), items.length && h("b", {}, `Needs action (${items.length})`)].filter(Boolean),
     ...items.map(([inc, tone, text]) => h("span", { class: "alert " + tone },
       h("button", { class: "link", type: "button", onclick: () => select(inc.incident_id) }, catText(inc.category)), ` ${shortPlace(inc.address)}: ${text}`,
-      h("button", { class: "btn small ghost", type: "button", title: "Acknowledge", onclick: () => { UI.acked.add(inc.incident_id); renderAll(); } }, "✓"))));
+      h("button", { class: "btn small ghost", type: "button", title: "Acknowledge", onclick: () => { UI.acked.add(inc.incident_id); renderAll(); } }, "✓"))),
+    h("button", { class: "panel-hide", type: "button", "data-hide": "alerts" }, "Hide"));
 }
 
 // ---- call list ------------------------------------------------------------------------------- //
@@ -906,10 +935,11 @@ function renderMap() {
     const key = s.agency + "|" + s.station;
     let m = stMarkers.get(key);
     if (!m) {
-      const el = h("div", { class: "mk-st", style: `background:${agencyColor(s.agency)}` }, glyphSvg(AGENCY[s.agency] ? s.agency : "shared", "#ffffff"));
+      // A plain wrapper, as for incidents: MapLibre's marker styles would otherwise uncentre the icon.
+      const el = h("div", {}, h("div", { class: "mk-st", style: `background:${agencyColor(s.agency)}` }, glyphSvg(AGENCY[s.agency] ? s.agency : "shared", "#ffffff")));
       m = new maplibregl.Marker({ element: el }).setLngLat([s.lon, s.lat]).addTo(map); stMarkers.set(key, m);
     }
-    m.getElement().classList.toggle("empty", s.available === 0);
+    m.getElement().firstChild.classList.toggle("empty", s.available === 0);
     m.getElement().title = `${s.station} (${AGENCY[s.agency]?.label || s.agency}): ${s.available} of ${s.total} vehicles free`;
   }
   const keep = new Set(), merges = [];
@@ -1066,8 +1096,8 @@ function drawNodes(m) {
       onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); UI.netNode = UI.netNode === k ? null : k; renderNet(true); } } },
       n.working ? sv("circle", { class: "working", cx: x, cy: y, r: NR + 6 }) : null,
       n.by === "fallback" ? sv("circle", { class: "fb", cx: x, cy: y, r: NR + 4 }) : null,
-      sv("circle", { class: "disc", cx: x, cy: y, r: NR, fill: color + "26", stroke: color }),
-      glyph(agency || k, x, y, 26, color),
+      sv("circle", { class: "disc", cx: x, cy: y, r: NR, fill: color, stroke: "rgba(255,255,255,0.85)" }),
+      glyph(agency || k, x, y, 32, k === "CR" || k === "Qwen" ? "#08161d" : "#ffffff"),
       n.lead ? sv("text", { x: x + NR - 2, y: y - NR + 6, class: "net-sub", "text-anchor": "middle", fill: color }, "★") : null,
       sv("text", { x, y: k === "Qwen" ? y - NR - 7 : y + NR + 14, "text-anchor": "middle", class: "net-name" }, AGENTS[k].label),
       n.sub ? sv("text", { x: k === "Qwen" ? x + NR + 8 : x, y: k === "Qwen" ? y + 4 : y + NR + 27, "text-anchor": k === "Qwen" ? "start" : "middle", class: "net-sub " + (n.tone || "") }, n.sub) : null,
@@ -1474,6 +1504,28 @@ function setLogOpen(open) {
   renderFeed();
 }
 
+
+// ---- view: show or hide any panel; remembered in this browser only ------------------------------ //
+const VIEW_ITEMS = [["calls", "Calls list"], ["matrix", "Success matrix"], ["alerts", "Needs-action strip"], ["agents", "Agents diagram"],
+  ["log", "Decision log"], ["details", "Call details"], ["legend", "Map legend"]];
+const VIEW = Object.fromEntries(VIEW_ITEMS.map(([k]) => [k, true]));
+try { Object.assign(VIEW, JSON.parse(localStorage.getItem("suru-view") || "{}")); } catch { /* storage blocked: defaults */ }
+function applyView() {
+  for (const [k] of VIEW_ITEMS) document.body.classList.toggle("hide-" + k, !VIEW[k]);
+  document.body.classList.toggle("hide-rail", !VIEW.agents && !VIEW.log);
+  try { localStorage.setItem("suru-view", JSON.stringify(VIEW)); } catch { /* storage blocked */ }
+  $("viewList").replaceChildren(...VIEW_ITEMS.map(([k, label]) => h("label", {},
+    h("input", { type: "checkbox", checked: VIEW[k] || null, onchange: (e) => setView(k, e.target.checked) }), label)),
+    h("button", { class: "btn small", type: "button", onclick: () => { for (const [k] of VIEW_ITEMS) VIEW[k] = true; applyView(); } }, "Show all"));
+  if (map) requestAnimationFrame(() => map.resize());
+}
+function setView(k, on) { VIEW[k] = on; applyView(); }
+document.addEventListener("click", (e) => {
+  const hide = e.target.closest("[data-hide]");
+  if (hide) setView(hide.dataset.hide, false);
+  if (!e.target.closest("#viewMenu")) $("viewMenu").open = false;
+});
+
 // ---- boot -------------------------------------------------------------------------------------- //
 async function bootConsole() {
   setInterval(() => { $("clock").textContent = hhmmss(new Date()); }, 1000);
@@ -1506,6 +1558,7 @@ async function bootConsole() {
       select(list[(i + (e.key === "j" ? 1 : -1) + list.length) % list.length]);
     } else if (e.key === "Escape" && UI.selected) select(null, false);
   });
+  applyView();
   initMap();
   try {
     [S.config, S.scenarios, S.bursts] = await Promise.all([api("/api/config"), api("/api/scenarios"), api("/api/burst").catch(() => ({}))]);
