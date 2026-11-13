@@ -44,23 +44,115 @@ async function connect(url) {
   setConn("Backend connected", "ok");
   drawRoads(roads);
   render(state);
+  if (data.pipeline.running && !polling) pollWhileRunning();  // reopened mid-run
+  if (!telemTimer) { pollTelemetry(); telemTimer = setInterval(pollTelemetry, 3000); }
 }
 
-async function action(path, button, busyText) {
-  const buttons = ["advance", "retry", "reset"].map($);
-  const label = button.textContent;
-  buttons.forEach((b) => (b.disabled = true));
-  button.textContent = busyText;
+// The pipeline runs in a backend worker; while it runs, poll so agent messages appear as they land.
+let polling = false;
+async function action(path) {
   try {
     const live = $("live").checked ? "?live=1" : "";
     render(await call(path + live, "POST"));
     setConn("Backend connected", "ok");
+    if (data.pipeline.running && !polling) pollWhileRunning();
   } catch (err) {
     setConn("Request failed: " + err.message, "bad");
-  } finally {
-    button.textContent = label;
-    buttons.forEach((b) => (b.disabled = false));
   }
+}
+
+async function pollWhileRunning() {
+  polling = true;
+  try {
+    while (data.pipeline.running) {
+      await new Promise((r) => setTimeout(r, 800));
+      render(await call("/api/state"));
+    }
+  } catch (err) {
+    setConn("Lost backend: " + err.message, "bad");
+  } finally {
+    polling = false;
+  }
+}
+
+function renderControls(p) {
+  ["advance", "retry", "reset"].forEach((id) => ($(id).disabled = p.running));
+  $("advance").textContent = p.running ? `Agents running ${Math.floor(p.elapsed_seconds)} s` : "Advance tick";
+}
+
+// ---------- compute telemetry ----------
+let telem = null;
+let telemTimer = null;
+const gpuHistory = [];
+async function pollTelemetry() {
+  try {
+    telem = await call("/api/telemetry");
+    const gpu = telem.gpu.available ? telem.gpu.gpus[0] : null;
+    if (gpu && gpu.util_pct != null) { gpuHistory.push(gpu.util_pct); if (gpuHistory.length > 40) gpuHistory.shift(); }
+    renderTelemetry();
+    if (data) renderAgents(data);
+  } catch { /* connection state is reported by the state calls */ }
+}
+
+function meter(label, value, pct, note = "") {
+  const width = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  return `<div class="meter"><div class="meter-row"><span>${label}</span><strong>${value}</strong></div>
+    <div class="meter-bar"><span style="width:${width}%"></span></div>${note ? `<p class="meter-note">${note}</p>` : ""}</div>`;
+}
+
+function historyLine(values) {
+  if (values.length < 5) return "";
+  const pts = values.map((v, i) => `${(i / 39) * 300},${36 - (v / 100) * 34}`).join(" ");
+  return `<svg class="history" viewBox="0 0 300 38" preserveAspectRatio="none" aria-label="GPU utilisation, last two minutes"><polyline points="${pts}"/></svg>`;
+}
+
+function renderTelemetry() {
+  const t = telem, gpu = t.gpu.available ? t.gpu.gpus[0] : null;
+  $("hw-host").textContent = `${gpu ? gpu.name : "No NVIDIA GPU detected"} – host ${t.host}`;
+  const unified = gpu && gpu.mem_total_mb == null;
+  const parts = [];
+  if (gpu) {
+    parts.push(meter("GPU utilisation", gpu.util_pct == null ? "n/a" : gpu.util_pct + "%", gpu.util_pct) + historyLine(gpuHistory));
+    if (!unified && gpu.mem_total_mb) parts.push(meter("GPU memory", `${(gpu.mem_used_mb / 1024).toFixed(1)} / ${(gpu.mem_total_mb / 1024).toFixed(1)} GB`, (gpu.mem_used_mb / gpu.mem_total_mb) * 100));
+  }
+  parts.push(meter(unified ? "Unified memory" : "System memory", `${t.memory.used_gb} / ${t.memory.total_gb} GB`, t.memory.pct));
+  parts.push(meter("CPU", Math.round(t.cpu_pct) + "%", t.cpu_pct));
+  if (gpu) parts.push(`<dl class="stats"><div><dt>Power</dt><dd>${gpu.power_w == null ? "n/a" : Math.round(gpu.power_w) + " W"}</dd></div><div><dt>GPU temp</dt><dd>${gpu.temp_c == null ? "n/a" : Math.round(gpu.temp_c) + " °C"}</dd></div></dl>`);
+  const o = t.ollama;
+  parts.push(o.reachable
+    ? `<div class="loaded"><h3>Models in memory</h3>${o.models.length ? `<ul>${o.models.map((m) => `<li><span>${esc(m.name)}</span><span>${m.size_gb} GB</span></li>`).join("")}</ul>` : `<p class="fine">None loaded. Ollama loads a model on its first call.</p>`}</div>`
+    : `<p class="fine">Ollama not reachable at ${esc(o.host)}. Agents run on offline rules.</p>`);
+  $("hw").innerHTML = parts.join("");
+}
+
+// ---------- agents ----------
+const AGENT_ROWS = [
+  { sender: "QWEN_TRIAGE", label: "Qwen triage", model: "qwen" },
+  { sender: "NEMOTRON_FIRE", label: "A1 – Fire", model: "nemotron" },
+  { sender: "NEMOTRON_POLICE", label: "A2 – Police", model: "nemotron" },
+  { sender: "NEMOTRON_AMBULANCE", label: "A3 – Ambulance", model: "nemotron" },
+  { sender: "A_CR", label: "A_cr – Config resolution", model: null },
+  { sender: "QWEN_GOLD_ARBITER", label: "Qwen Gold Arbiter", model: "qwen" },
+];
+
+function renderAgents(snap) {
+  const p = snap.pipeline, board = snap.state.message_board, tick = snap.state.tick;
+  $("pipeline").className = "sys-pipeline " + (p.running ? "running" : p.error ? "error" : "");
+  $("pipeline").textContent = p.running ? `Running tick ${tick} with ${p.live ? "live models" : "offline rules"} – ${Math.floor(p.elapsed_seconds)} s`
+    : p.error ? `Last run failed: ${p.error}`
+    : p.last_seconds != null ? `Idle – last round took ${p.last_seconds} s with ${p.live ? "live models" : "offline rules"}` : "Idle – advance a tick to run the agents";
+  $("agents").innerHTML = AGENT_ROWS.map((a) => {
+    const mine = board.filter((e) => e.sender === a.sender);
+    const last = mine[mine.length - 1];
+    const model = a.model ? (p.live ? (telem ? telem.models[a.model] : "…") : "Offline rules") : "Not yet active (#3)";
+    const now = last && last.tick === tick;
+    const state = !a.model ? "Planned" : now ? (p.running ? "Posted just now" : "Active this tick") : last ? `Last active tick ${last.tick}` : "No activity yet";
+    const body = last ? `<span class="agent-last"><b>${esc(last.incident_cam)}</b> ${esc(last.proposal_text)}</span>` : "";
+    const tag = last ? "button" : "div";
+    return `<li><${tag} class="agent ${now ? "now" : ""} ${a.model ? "" : "planned"}" ${last ? `type="button" data-cam="${esc(last.incident_cam)}"` : ""}>
+      <span class="agent-top"><span class="agent-name">${esc(a.label)}</span><span class="agent-state">${state}</span></span>
+      <span class="agent-model">${esc(model)}${mine.length ? ` – ${mine.length} message${mine.length > 1 ? "s" : ""}` : ""}</span>${body}</${tag}></li>`;
+  }).join("");
 }
 
 // ---------- derived state ----------
@@ -92,6 +184,8 @@ function render(snapshot) {
   $("tick").textContent = "Tick " + s.tick;
   const mode = s.routing.mode;
   $("graph-note").textContent = mode.startsWith("synthetic") ? "Synthetic graph – invented links, not real streets" : "OSM road graph – estimated speeds";
+  renderControls(data.pipeline);
+  renderAgents(data);
   renderGantry(s);
   renderIncidents(s);
   renderMap(s);
@@ -151,7 +245,8 @@ function initMap() {
   map = new maplibregl.Map({
     container: "map",
     bounds: [[-1.53, 53.372], [-1.40, 53.418]],
-    fitBoundsOptions: { padding: $("map").clientWidth > 800 ? { top: 40, bottom: 40, left: 40, right: 140 } : 16 },
+    // Asymmetric padding leaves room for station tags, which extend right of their markers.
+    fitBoundsOptions: { padding: $("map").clientWidth > 600 ? { top: 40, bottom: 50, left: 40, right: 110 } : 16 },
     attributionControl: { compact: true },
     style: "https://tiles.openfreemap.org/styles/fiord",
   });
@@ -229,9 +324,8 @@ function renderMap(s) {
     const el = document.createElement("div");
     // shortcut: Royal Hallamshire sits just west of Eyre St, so its tag goes left; replace with collision layout if hubs become data-driven.
     el.className = `mk mk-station ${free ? "" : "depleted"} ${hubId === "NHS_ROYAL_HALLAM" ? "tag-left" : ""}`;
-    const agency = own.length ? AGENCY_SHORT[own[0][1].agency] : "";
-    el.innerHTML = `<i>${HUB_LETTER[hub.type]}</i><span class="mk-tag">${esc(stationName(hub))} – ${agency} ${free}/${own.length} free</span>`;
-    placeMarker("hub:" + hubId, [hub.lon, hub.lat], el, `${hub.name}: ${own.map(([id, u]) => id + " " + u.status).join(", ")}`);
+    el.innerHTML = `<i>${HUB_LETTER[hub.type]}</i><span class="mk-tag">${esc(stationName(hub))} <b>${free}/${own.length}</b></span>`;
+    placeMarker("hub:" + hubId, [hub.lon, hub.lat], el, `${hub.name}: ${free} of ${own.length} ${own.length ? AGENCY_SHORT[own[0][1].agency] : ""} vehicles free (${own.map(([id, u]) => id + " " + u.status).join(", ")})`);
     keep.add("hub:" + hubId);
   }
   for (const inc of Object.values(s.active_incidents)) {
@@ -469,9 +563,9 @@ document.addEventListener("click", (ev) => {
 $("hw-close").addEventListener("click", () => $("highway").close());
 $("highway").addEventListener("close", () => { openCam = null; });
 $("hw-round").addEventListener("change", () => renderHighway(openCam, true));
-$("advance").addEventListener("click", (e) => action("/api/tick", e.currentTarget, $("live").checked ? "Running models…" : "Advancing…"));
-$("retry").addEventListener("click", (e) => action("/api/retry", e.currentTarget, "Retrying…"));
-$("reset").addEventListener("click", (e) => action("/api/reset", e.currentTarget, "Resetting…"));
+$("advance").addEventListener("click", () => action("/api/tick"));
+$("retry").addEventListener("click", () => action("/api/retry"));
+$("reset").addEventListener("click", () => action("/api/reset"));
 $("conn").addEventListener("click", () => showConnect());
 document.querySelectorAll(".layers input").forEach((box) => box.addEventListener("change", () => {
   box.checked ? hidden.delete(box.dataset.layer) : hidden.add(box.dataset.layer);
