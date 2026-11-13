@@ -75,3 +75,33 @@ placeholders. Track 4 owns future profile/schema consolidation and licensed medi
 Only one open incident per node is supported; re-ingestion waits for its previous
 resources to finish turnaround. Authored node closures outside the five hero
 camera mappings require an explicit access/closure policy before enabling them.
+
+## Cosmos image client
+
+cosmos_client.py sends a report manifest prompt to a ready Cosmos3 Generator NIM,
+decodes b64_image, verifies the JPEG and atomically saves it as the incident ID.
+It never needs the NGC key; that stays with the NIM deployment. Existing images
+are skipped unless --overwrite is supplied. Requests are not automatically retried
+because a timed-out generation may still be running on the server.
+
+For a localhost-only Spark deployment, open a tunnel from this machine:
+
+```powershell
+ssh -N -L 18000:127.0.0.1:8000 USER@SPARK
+```
+
+In a separate terminal, after Generator readiness succeeds:
+
+```powershell
+python cosmos_client.py --endpoint http://127.0.0.1:18000 --incident-id 20261113000002
+```
+
+Preview all payloads without a server or model:
+
+```powershell
+python cosmos_client.py --dry-run
+```
+
+These prompts generate illustrative synthetic views, not verified reproductions
+of Sheffield CCTV. Review images before feeding them to Qwen. Live generation is
+separate from the report-world clock; a render must not advance scenario time.
