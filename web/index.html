@@ -61,17 +61,14 @@
   <aside class="rail" aria-label="Agent observability">
     <div class="rail-head">
       <h2 class="head"><i class="live-dot" id="live-dot" aria-hidden="true"></i>Agent observability</h2>
+      <section class="net" aria-labelledby="net-title">
+        <p class="net-title" id="net-title">Agent interaction</p>
+        <svg id="net" viewBox="0 0 340 214" role="group" aria-label="How Qwen, A1, A2, A3 and CR interacted on this incident"></svg>
+        <p class="net-detail" id="net-detail" aria-live="polite"></p>
+      </section>
       <div class="rail-controls">
+        <div class="agent-toggles" id="agent-toggles" role="group" aria-label="Show agents in the feed"></div>
         <label><input type="checkbox" id="feed-follow"> Follow selected</label>
-        <select id="feed-agent" aria-label="Filter by agent">
-          <option value="">All agents</option>
-          <option value="Qwen">Qwen</option>
-          <option value="A1">A1 Police</option>
-          <option value="A2">A2 Ambulance</option>
-          <option value="A3">A3 Fire</option>
-          <option value="CR">CR</option>
-          <option value="rules">Rules</option>
-        </select>
         <button class="btn small" id="feed-pause" type="button" aria-pressed="false">Pause</button>
       </div>
     </div>

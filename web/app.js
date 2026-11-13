@@ -53,7 +53,7 @@ const pct = (n, d) => (d ? Math.round((n / d) * 100) : null);
 // ---------- state ----------
 const API = window.SURU_API;
 const store = { health: null, incidents: [], responses: [], events: [], lastEventId: 0, stations: [] };
-const ui = { selected: null, chips: new Set(), tab: "summary", feedPaused: false, feedPending: 0, expandedEvents: new Set(), demoRunning: false };
+const ui = { selected: null, chips: new Set(), tab: "summary", feedPaused: false, feedPending: 0, expandedEvents: new Set(), demoRunning: false, hiddenAgents: new Set(), netEdge: null };
 let baseline = null, lastMetrics = null, lastIncidentCount = 0;
 
 // ---------- data ----------
@@ -402,12 +402,11 @@ function renderFeed() {
     return;
   }
   $("feed-new").hidden = true;
-  const agentFilter = $("feed-agent").value;
   const follow = $("feed-follow").checked && ui.selected;
   const rows = store.events.filter((e) => {
     const inc = e.incident_id && incidentOf(e.incident_id);
     if (inc && !visible(inc)) return false;
-    if (agentFilter && e.agent_id !== agentFilter) return false;
+    if (ui.hiddenAgents.has(e.agent_id)) return false;
     if (follow && e.incident_id !== ui.selected) return false;
     return true;
   }).slice(-200).reverse();
@@ -505,11 +504,160 @@ async function runDemo() {
   }
 }
 
+// ---------- agent interaction network ----------
+// Qwen routes to A1/A2/A3; each agent proposes to CR; CR answers each agent; soft conflicts link agents directly.
+const NET_POS = { Qwen: [170, 20], A1: [52, 92], A2: [170, 92], A3: [288, 92], CR: [170, 196] };
+const NET_AGENCY = { A1: "police", A2: "ambulance", A3: "fire" };
+const AGENT_OF = { police: "A1", ambulance: "A2", fire: "A3" };
+const NW2 = 46, NH2 = 15;  // half width / height of a node
+const LIVE_MS = 5000;
+let netSig = "";
+
+function netIncidentId() {
+  if (ui.selected) return ui.selected;
+  for (let i = store.events.length - 1; i >= 0; i--) {
+    const inc = incidentOf(store.events[i].incident_id);
+    if (inc && visible(inc)) return inc.id;
+  }
+  return null;
+}
+
+function netModel(id) {
+  const inc = incidentOf(id), r = latestResponse(id);
+  const evs = store.events.filter((e) => e.incident_id === id);
+  const last = (type, agent) => [...evs].reverse().find((e) => e.type === type && (!agent || e.agent_id === agent));
+  const routedEv = last("ROUTED");
+  const routing = (r && r.routing.agencies) ? r.routing : routedEv ? routedEv.payload : { lead: inc.lead_agency, agencies: inc.routed_agencies };
+  const routed = new Set(routing.agencies || []);
+  const proposals = {};
+  for (const a of ["A1", "A2", "A3"]) {
+    const fromResp = r && r.agent_responses.find((p) => p.agent_id === a || AGENT_OF[p.agency] === a);
+    const ev = last("PROPOSAL", a);
+    proposals[a] = { data: fromResp || (ev && ev.payload), event: ev };
+  }
+  const owner = (type) => Object.keys(proposals).find((a) => (proposals[a].data?.requests || []).some((q) => q.resource_type === type));
+  const isLive = (e) => e && Date.now() - new Date(e.ts).getTime() < LIVE_MS;
+  const edges = [];
+  for (const a of ["A1", "A2", "A3"]) {
+    const on = routed.has(NET_AGENCY[a]), lead = routing.lead === NET_AGENCY[a];
+    edges.push({ from: "Qwen", to: a, cls: on ? (lead ? "routed lead" : "routed") : "idle", event: on ? routedEv : null,
+      label: "", title: on ? `Qwen routed to ${AGENTS[a].label}${lead ? " (lead)" : ""}` : `${AGENTS[a].label} not routed`, live: on && isLive(routedEv) });
+    const p = proposals[a].data;
+    if (!on && !p) continue;
+    const reqs = (p?.requests || []).map((q) => `${q.qty} ${q.resource_type}`);
+    edges.push({ from: a, to: "CR", side: -1, cls: p ? "proposal" : "waiting", color: agencyOf(NET_AGENCY[a]).color, event: proposals[a].event,
+      label: reqs.length ? reqs[0] + (reqs.length > 1 ? ` +${reqs.length - 1}` : "") : "", title: p ? `${AGENTS[a].label} → CR: ${p.summary || reqs.join(", ")}` : `${AGENTS[a].label}: proposal pending`, live: isLive(proposals[a].event) });
+    if (!r || !p) continue;
+    // CR's answer to this agent: did its requests get met, and did CR have to arbitrate them?
+    const short = r.unmet.filter((u) => owner(u.resource_type) === a);
+    const hard = r.hard_conflicts.filter((h) => owner(h.resource_type) === a);
+    const overridden = hard.some((h) => h.overridden);
+    const cls = short.some((u) => u.essential) ? "bad" : short.length || overridden ? "warn" : "ok";
+    const text = short.length ? `short ${short.reduce((n, u) => n + u.qty, 0)}` : hard.length ? "resolved" : "met";
+    const decisionEv = hard.length ? last("RESOLUTION", "CR") : last("DISPATCHED", "CR");
+    edges.push({ from: "CR", to: a, side: 1, cls: "answer " + cls, event: decisionEv, label: text,
+      title: `CR → ${AGENTS[a].label}: ${hard.length ? hard.map((h) => h.resolution).join("; ") : short.length ? short.map((u) => `${u.qty}× ${u.type_name || u.resource_type} unmet`).join(", ") : "all requests met"}`,
+      live: isLive(decisionEv) });
+  }
+  const soft = (r ? r.soft_conflicts : evs.filter((e) => e.type === "SOFT_CONFLICT").map((e) => e.payload)) || [];
+  for (const s of soft) {
+    const [x, y] = (s.agencies || []).map((g) => AGENT_OF[g]).filter(Boolean);
+    if (!x || !y) continue;
+    const ev = [...evs].reverse().find((e) => e.type === "SOFT_CONFLICT" && (e.payload?.code === s.code));
+    edges.push({ from: x, to: y, cls: "soft", event: ev, label: "", title: `${s.title || softText(s.code)} → ${s.resolution || s.suggested_resolution || "CR to resolve"}`, live: isLive(ev) });
+  }
+  const preempted = r ? r.allocations.filter((al) => al.preempted_from).length : 0;
+  const overrides = r ? r.hard_conflicts.filter((h) => h.overridden).length : 0;
+  return { inc, r, edges, routed, routing, preempted, overrides, proposals };
+}
+
+function netPath(e) {
+  const [x1, y1] = NET_POS[e.from], [x2, y2] = NET_POS[e.to];
+  if (e.cls === "soft") {
+    // Neighbours: a short link across the gap between their boxes. A1–A3: an arc over the row.
+    const [l, r] = x1 < x2 ? [x1, x2] : [x2, x1];
+    if (r - l < 150) return `M${l + NW2},${y1} L${r - NW2},${y2}`;
+    return `M${l},${y1 - NH2} Q${(l + r) / 2},${y1 - NH2 - 40} ${r},${y2 - NH2}`;
+  }
+  if (!e.side) return `M${x1},${y1 + NH2} L${x2},${y2 - NH2}`;  // Qwen → agent
+  // Agent ↔ CR pairs are two parallel lines either side of the agent→CR axis: proposal on one, CR's answer on the other.
+  const { a, n } = netAxis(e);
+  const off = e.side * 5;
+  const pa = [a[0] + n[0] * off, a[1] + NH2 + n[1] * off], pc = [NET_POS.CR[0] + n[0] * off, NET_POS.CR[1] - NH2 + n[1] * off];
+  const [p, q] = e.from === "CR" ? [pc, pa] : [pa, pc];
+  return `M${p[0]},${p[1]} L${q[0]},${q[1]}`;
+}
+
+function netAxis(e) {
+  const a = NET_POS[e.from === "CR" ? e.to : e.from], c = NET_POS.CR;
+  const len = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1;
+  return { a, c, n: [-(c[1] - a[1]) / len, (c[0] - a[0]) / len] };
+}
+
+function netLabel(e) {
+  if (!e.side || !e.label) return "";
+  const { a, c, n } = netAxis(e);
+  // Both labels sit near the agent, either side of the pair, where the lines are still far apart.
+  const t = 0.34;
+  const dir = n[0] * e.side;  // which way the label is pushed horizontally
+  const x = a[0] + (c[0] - a[0]) * t + n[0] * e.side * 9, y = a[1] + (c[1] - a[1]) * t + n[1] * e.side * 9 + 3;
+  const anchor = dir > 0.3 ? "start" : dir < -0.3 ? "end" : "middle";
+  return `<text class="net-label ${e.cls.split(" ").pop()}" x="${x}" y="${y}" text-anchor="${anchor}">${esc(e.label)}</text>`;
+}
+
+function renderNet() {
+  const id = netIncidentId();
+  const svg = $("net");
+  if (!id) {
+    if (netSig === "empty") return;
+    netSig = "empty";
+    $("net-title").textContent = "Agent interaction";
+    svg.innerHTML = `<text x="170" y="110" text-anchor="middle" class="net-empty">Run the demo to watch the agents work together.</text>`;
+    $("net-detail").textContent = "";
+    return;
+  }
+  if (id !== renderNet.lastId) { ui.netEdge = null; renderNet.lastId = id; }  // an edge index means nothing on another incident
+  const m = netModel(id);
+  const sig = JSON.stringify([id, m.edges.map((e) => [e.from, e.to, e.cls, e.label, e.live]), m.preempted, m.overrides, ui.netEdge]);
+  if (sig === netSig) return;
+  netSig = sig;
+  $("net-title").innerHTML = `Agent interaction – <span class="mono">${esc(id)}</span> ${esc(categoryText(m.inc.category))}<span class="muted">${ui.selected ? "" : " (latest)"}</span>`;
+  const markerColors = { police: AGENCY.police.color, ambulance: AGENCY.ambulance.color, fire: AGENCY.fire.color, ok: "#4cc38a", warn: "#f5b300", bad: "#ff5a5f" };
+  const defs = `<defs>${Object.entries(markerColors).map(([k, c]) => `<marker id="ah-${k}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 z" fill="${c}"/></marker>`).join("")}</defs>`;
+  const edgeSvg = m.edges.map((e, i) => {
+    const d = netPath(e);
+    const kind = e.cls.split(" ").pop();
+    const stroke = e.cls === "proposal" || e.cls === "waiting" ? e.color : null;
+    const marker = e.cls === "proposal" ? `marker-end="url(#ah-${NET_AGENCY[e.from]})"` : e.cls.startsWith("answer") ? `marker-end="url(#ah-${kind})"` : "";
+    return `<g class="net-edge ${e.cls} ${e.live ? "live" : ""} ${ui.netEdge === i ? "picked" : ""}">
+      <path class="line" d="${d}" ${stroke ? `style="stroke:${stroke}"` : ""} ${marker}/>${netLabel(e)}
+      <path class="net-hit" d="${d}" data-net-edge="${i}" tabindex="0" role="button" aria-label="${esc(e.title)}"><title>${esc(e.title)}</title></path></g>`;
+  }).join("");
+  const node = (key, fill, ink, sub) => {
+    const [x, y] = NET_POS[key];
+    const active = key === "Qwen" || key === "CR" || m.routed.has(NET_AGENCY[key]);
+    const hw = key === "CR" ? 66 : NW2;  // CR carries the pre-emption/override counts, so it is wider
+    return `<g class="net-node ${active ? "" : "idle"}" transform="translate(${x - hw},${y - NH2})">
+      <rect width="${hw * 2}" height="${NH2 * 2}" rx="5" fill="${fill}"/>
+      <text x="${hw}" y="${sub ? 13 : 19}" text-anchor="middle" fill="${ink}" class="net-name">${esc(AGENTS[key].label)}</text>
+      ${sub ? `<text x="${hw}" y="25" text-anchor="middle" fill="${ink}" class="net-sub">${esc(sub)}</text>` : ""}</g>`;
+  };
+  const crSub = [m.preempted && `${m.preempted} pre-empted`, m.overrides && `${m.overrides} override`].filter(Boolean).join(", ");
+  const nodes = node("Qwen", AGENTS.Qwen.color, "#0a1a22") +
+    ["A1", "A2", "A3"].map((a) => node(a, agencyOf(NET_AGENCY[a]).color, "#ffffff", m.routing.lead === NET_AGENCY[a] ? "lead" : "")).join("") +
+    node("CR", "#ffffff", "#0a1a22", crSub);
+  svg.innerHTML = defs + edgeSvg + nodes;
+  const picked = ui.netEdge != null && m.edges[ui.netEdge];
+  $("net-detail").textContent = picked ? picked.title
+    : m.r ? "Click a line to read that exchange." : "Agents are working on this incident…";
+}
+
 function renderAll() {
   renderMetrics();
   renderList();
   renderMap();
   renderDrawer();
+  renderNet();
   renderFeed();
   if ($("resources-dialog").open) renderResources();
 }
@@ -527,6 +675,12 @@ document.addEventListener("click", async (ev) => {
   if (t.dataset.act === "deselect") return deselect();
   if (t.dataset.act === "close-incident") { await API.call("closeIncident", ui.selected); return poll(); }
   if (t.dataset.act === "retry") { await API.call("retryIncident", ui.selected); return poll(); }
+  if (t.dataset.agentToggle) {
+    const k = t.dataset.agentToggle;
+    ui.hiddenAgents.has(k) ? ui.hiddenAgents.delete(k) : ui.hiddenAgents.add(k);
+    t.setAttribute("aria-pressed", String(!ui.hiddenAgents.has(k)));
+    return renderFeed();
+  }
   if (t.dataset.chip) {
     const chip = t.dataset.chip;
     if (chip === "all") ui.chips.clear(); else ui.chips.has(chip) ? ui.chips.delete(chip) : ui.chips.add(chip);
@@ -544,8 +698,19 @@ $("new-incident").addEventListener("click", () => { $("incident-error").textCont
 $("open-resources").addEventListener("click", () => { $("resources-dialog").showModal(); renderResources(); });
 $("about-open").addEventListener("click", () => $("about-dialog").showModal());
 $("mode").addEventListener("click", () => { $("api-url").value = API.base; $("connect").showModal(); });
-$("feed-agent").addEventListener("change", renderFeed);
 $("feed-follow").addEventListener("change", renderFeed);
+$("agent-toggles").innerHTML = Object.entries(AGENTS).map(([k, a]) =>
+  `<button type="button" class="agent-toggle" data-agent-toggle="${k}" aria-pressed="true" style="--c:${a.color}">${esc(a.label)}</button>`).join("");
+$("net").addEventListener("click", (ev) => {
+  const hit = ev.target.closest("[data-net-edge]");
+  if (!hit) return;
+  const i = Number(hit.dataset.netEdge);
+  ui.netEdge = ui.netEdge === i ? null : i;
+  renderNet();
+});
+$("net").addEventListener("keydown", (ev) => {
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.dataset.netEdge) { ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+});
 $("feed-pause").addEventListener("click", (e) => {
   ui.feedPaused = !ui.feedPaused; ui.feedPending = 0;
   e.currentTarget.setAttribute("aria-pressed", String(ui.feedPaused));
