@@ -14,4 +14,4 @@ $env:UR_TIME_SCALE = "20"
 $env:LLM_MODE = if ($Live) { "live" } else { "mock" }
 Write-Host "SURU: http://localhost:$Port/console (fresh in-memory world; closing this process resets the run)"
 Write-Host "Agents: $env:LLM_MODE. Outcome proposals are validated before graph effects."
-& $Python -m uvicorn urban_response.api:app --host 127.0.0.1 --port $Port
+& $Python -m uvicorn urban_response.api:app --host 127.0.0.1 --port $Port --log-level warning

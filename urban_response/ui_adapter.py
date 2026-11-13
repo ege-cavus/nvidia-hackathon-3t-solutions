@@ -383,7 +383,6 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
                 out[j["incident_id"]] = "error" if j.get("outcome") == "error" else ("done" if j["done"] else "running")
         return out
 
-    @r.get("/world")
     def world_summary():
         world = state.get("world")
         if world is None:
@@ -395,6 +394,10 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
                 "outcomes":{str(case_id):{"status":world.state["active_incidents"][node]["status"],
                     "severity":world.state["active_incidents"][node]["severity"],
                     **world.evaluate_response(node)} for case_id,node in world.case_nodes.items()}}
+
+    @r.get("/world")
+    async def read_world():
+        return world_summary()
 
     @r.post("/world/dispatch")
     async def dispatch_world():
@@ -430,7 +433,7 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return world_summary()
 
     @r.get("/health")
-    def health():
+    async def health():
         s = state["settings"]
         if not s.live:
             model = None
@@ -442,7 +445,7 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
                 "jobs_running": sum(1 for j in state["jobs"].values() if not j["done"])}
 
     @r.get("/incidents")
-    def incidents():
+    async def incidents():
         js = job_states()
         return [norm_incident(row, js.get(row["incident_id"])) for row in incident_rows(db())]
 
@@ -456,7 +459,7 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return await start_job(incident, mode)
 
     @r.post("/incidents/{incident_id}/close")
-    def close(incident_id: int):
+    async def close(incident_id: int):
         if not db().get_incident(incident_id):
             raise HTTPException(404, "Unknown incident")
         n = db().close_incident(incident_id)
@@ -464,12 +467,12 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return {"id": str(incident_id), "status": "closed", "units_released": n}
 
     @r.get("/responses")
-    def responses():
+    async def responses():
         rows = db()._conn.execute("SELECT response_json FROM responses ORDER BY created_at").fetchall()
         return [norm_response(json.loads(x["response_json"])) for x in rows]
 
     @r.get("/incidents/{incident_id}/responses")
-    def incident_responses(incident_id: int):
+    async def incident_responses(incident_id: int):
         rows = db()._conn.execute("SELECT response_json FROM responses WHERE incident_id = ? ORDER BY created_at",
                                   (incident_id,)).fetchall()
         return [norm_response(json.loads(x["response_json"])) for x in rows]
@@ -479,18 +482,18 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return state["feed"].since(since_id)
 
     @r.get("/stations")
-    def stations():
+    async def stations():
         return [{"id": station_id(s["station"], s["agency"]), "name": s["station"], "agency": s["agency"],
                  "lat": s["lat"], "lon": s["lon"], "total": s["total"], "available": s["available"]} for s in db().stations()]
 
     @r.get("/hospitals")
-    def hospitals():
+    async def hospitals():
         return [{"name": h["name"], "ed_capacity": h["ed_capacity"], "major_trauma": bool(h["major_trauma"]),
                  "paediatric": bool(h["paediatric"]), "lat": h["lat"], "lon": h["lon"]}
                 for h in db().hospitals(53.3811, -1.4701)]
 
     @r.get("/units")
-    def units(resource_type: str | None = None, agency: str | None = None):
+    async def units(resource_type: str | None = None, agency: str | None = None):
         q = """
             SELECT u.unit_id, u.callsign, u.resource_type, u.agency, u.station, u.lat, u.lon, u.status, a.incident_id
             FROM units u LEFT JOIN allocations a ON a.unit_id = u.unit_id AND a.released_at IS NULL
@@ -524,7 +527,7 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
                  "incident_id": _sid(u["incident_id"])} for u in rows]
 
     @r.post("/units/{unit_id}/release")
-    def release(unit_id: str):
+    async def release(unit_id: str):
         unit = db().unit(unit_id)
         if not unit:
             raise HTTPException(404, "Unknown unit")
@@ -537,13 +540,13 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return {"id": unit_id, "released": ok}
 
     @r.get("/resources")
-    def resources():
+    async def resources():
         return [{"code": t["resource_type"], "name": type_name(t["resource_type"]), "agency": t["agency"], "total": t["total"],
                  "available": t["available"], "committed": t["committed"], "out_of_service": t["total"] - t["in_service"]}
                 for t in db().inventory()]
 
     @r.get("/resources/{resource_type}/forecast")
-    def forecast(resource_type: str):
+    async def forecast(resource_type: str):
         if resource_type not in db().resource_types():
             raise HTTPException(404, "Unknown resource type")
         total = sum(t["total"] for t in db().inventory() if t["resource_type"] == resource_type)
@@ -557,8 +560,8 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         return json.loads((ROOT / "scenarios" / "sheffield_demo.json").read_text())
 
     @r.post("/reset")
-    def do_reset():
-        out = reset()
+    async def do_reset():
+        out = await reset()
         state["feed"].clear()
         return out
 

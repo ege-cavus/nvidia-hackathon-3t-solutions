@@ -35,6 +35,9 @@ STATIC = Path(__file__).parent / "static"
 WEB = ROOT / "web"  # demo dashboard
 WEB_ASSETS = {"app.js", "api.js", "mock.js", "style.css"}
 state: dict = {}
+# SQLite and graph state have one owner: the API event loop. DB-backed handlers
+# stay async (without thread offload), so polls cannot interleave SQLite calls
+# from FastAPI worker threads with dispatch/effect transactions.
 
 
 @asynccontextmanager
@@ -117,7 +120,7 @@ async def _world_event(incident_id, name, payload):
 
 
 @app.get("/world/state")
-def world_state():
+async def world_state():
     world = state.get("world")
     if world is None:
         raise HTTPException(409, "Set UR_WORLD_SCENARIO and use a fresh demo database")
@@ -252,7 +255,7 @@ def scenarios():
 
 
 @app.get("/api/state")
-def console_state():
+async def console_state():
     db = state["db"]
     jobs = [{"job_id": k, "incident_id": j["incident_id"], "label": j["label"], "done": j["done"],
              "outcome": j.get("outcome")} for k, j in state["jobs"].items()]
@@ -283,17 +286,17 @@ def console_state():
 
 
 @app.get("/api/personnel")
-def personnel():
+async def personnel():
     return state["db"].personnel_inventory()
 
 
 @app.get("/api/ledger")
-def ledger(limit: int = 100, incident_id: int | None = None):
+async def ledger(limit: int = 100, incident_id: int | None = None):
     return state["db"].ledger(limit, incident_id)
 
 
 @app.get("/api/brief/{incident_id}")
-def brief(incident_id: int):
+async def brief(incident_id: int):
     """Normalised, phone-sized incident brief: headline, facts, orders, units with crews, log."""
     b = build_brief(state["db"], incident_id)
     if not b:
@@ -410,7 +413,7 @@ async def job_events(job_id: str):
 
 
 @app.post("/api/reset")
-def reset():
+async def reset():
     if any(not j["done"] for j in state["jobs"].values()):
         raise HTTPException(409, "Wait for running incidents to finish")
     if state.get("world") is not None and state["world"].inflight:
@@ -434,7 +437,7 @@ app.include_router(make_router(state, _start_job, reset))
 
 
 @app.get("/health")
-def health():
+async def health():
     s = state["settings"]
     return {
         "mode": s.llm_mode,
@@ -453,18 +456,18 @@ async def create_incident(incident: Incident):
 
 
 @app.get("/incidents")
-def list_incidents(status: IncidentStatus | None = None):
+async def list_incidents(status: IncidentStatus | None = None):
     return state["db"].incidents(status)
 
 
 @app.get("/backlog")
-def backlog():
+async def backlog():
     """Incidents whose response has been dispatched."""
     return state["db"].incidents(IncidentStatus.backlog)
 
 
 @app.get("/incidents/{incident_id}")
-def get_incident(incident_id: int):
+async def get_incident(incident_id: int):
     inc = state["db"].get_incident(incident_id)
     if not inc:
         raise HTTPException(404)
@@ -472,14 +475,14 @@ def get_incident(incident_id: int):
 
 
 @app.get("/incidents/{incident_id}/responses")
-def incident_responses(incident_id: int):
+async def incident_responses(incident_id: int):
     if not state["db"].get_incident(incident_id):
         raise HTTPException(404)
     return state["db"].responses(incident_id)
 
 
 @app.post("/incidents/{incident_id}/close")
-def close_incident(incident_id: int):
+async def close_incident(incident_id: int):
     if not state["db"].get_incident(incident_id):
         raise HTTPException(404)
     return {"units_released": state["db"].close_incident(incident_id)}
@@ -489,12 +492,12 @@ def close_incident(incident_id: int):
 
 
 @app.get("/responses")
-def list_responses():
+async def list_responses():
     return state["db"].responses()
 
 
 @app.get("/responses/{response_id}")
-def get_response(response_id: int):
+async def get_response(response_id: int):
     r = state["db"].get_response(response_id)
     if not r:
         raise HTTPException(404)
@@ -502,7 +505,7 @@ def get_response(response_id: int):
 
 
 @app.get("/conflicts")
-def conflicts(incident_id: int | None = None, response_id: int | None = None):
+async def conflicts(incident_id: int | None = None, response_id: int | None = None):
     return state["db"].conflict_log(incident_id, response_id)
 
 
@@ -510,17 +513,17 @@ def conflicts(incident_id: int | None = None, response_id: int | None = None):
 
 
 @app.post("/units/{unit_id}/release")
-def release_unit(unit_id: str):
+async def release_unit(unit_id: str):
     return {"released": state["db"].release_unit(unit_id)}
 
 
 @app.get("/resources")
-def resources():
+async def resources():
     return state["db"].inventory()
 
 
 @app.get("/resources/{resource_type}/forecast")
-def forecast(resource_type: str, horizon_min: int = 120):
+async def forecast(resource_type: str, horizon_min: int = 120):
     if resource_type not in state["db"].resource_types():
         raise HTTPException(404)
     return state["db"].availability_forecast(resource_type, horizon_min)

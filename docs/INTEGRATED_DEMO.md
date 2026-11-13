@@ -156,6 +156,8 @@ Outcome uses the same configured Qwen endpoint as Intake, with a separate prompt
 and request context. The model returns `OutcomeProposal` in urban_response/outcomes.py:
 proposal_id, incident_id, node_id, world_version, tick, outcome, work_credit, reason.
 This is a separate internal contract; canonical incident/response JSON is unchanged.
+Database-backed HTTP handlers and world updates run on the API event loop, keeping
+the demo's shared SQLite connection out of concurrent FastAPI worker threads.
 
 The loop is: move vehicles/receive reports -> collect observations -> Qwen proposal
 -> validate/apply -> spread -> update metrics -> release completed vehicles. It runs

@@ -25,6 +25,14 @@
   },
   "tests": {
     "full_suite": "113 passed, 1 skipped, 21 subtests passed",
-    "latest_targeted": "15 passed (world integration, outcome effects, console contract)"
+    "latest_targeted": "15 passed (world integration, outcome effects, console contract)",
+    "owner_thread_regression": "Concurrent polls and world effects checked with an owner-enforcing SQLite wrapper; UI reset also passed. 3 focused tests passed."
+  },
+  "concurrent_polling": {
+    "requests": 100,
+    "failed": [],
+    "tick": 5,
+    "mode": "model",
+    "projection_in_evidence": true
   }
 }
