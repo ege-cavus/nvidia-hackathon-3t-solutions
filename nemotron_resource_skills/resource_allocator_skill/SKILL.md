@@ -22,16 +22,15 @@ Reject or flag mismatched snapshots, duplicate service proposals, unknown resour
 8. **Service-specific accounting.** Police cars, fire engines and ambulances have independent pools. Never transfer quantities across services. Account for every known resource type, including zero-availability types.
 
 ## Workflow
-A. Validate inputs and inventory. B. Construct requested totals per service/type from individual event proposals (do not trust reported totals blindly). C. Rank competing requests, preserving specialist justification. D. Allocate in integer units within each pool. E. For every non-full allocation, explain the concrete reason and whether the remainder is viable. F. Compute totals, remaining capacity and unmet quantities. G. Return only JSON conforming to `allocator_output_schema.json`.
+A. Validate inputs and inventory. B. Construct requested totals per service/type from individual event proposals, trust proposed numbers but allow scope for +- 1 . C. Allocate in integer units within each pool. E. For every non-full allocation, explain the concrete reason and whether the remainder is viable. F. Compute totals, remaining capacity and unmet quantities. G. Return only JSON conforming to `allocator_output_schema.json`.
 
 ## Required output semantics
 - `requested`: specialist's original quantity; never rewrite it.
-- `approved`: proposed number of vehicles for this event (not actual dispatch).
+- `approved`: proposed number of vehicles for this event.
 - `decision`: `full`, `reduced`, `deferred`, or `rejected`.
 - `reduction_reason`: required for any approved < requested, with an evidence-based justification.
 - `operationally_adequate`: `true`, `false`, or `null` if unknown; do not claim adequacy without a stated basis.
 - `review_flags`: conflicts, uncertainty, shortages, questionable reductions.
-- `requires_human_review`: always true.
 
 ## Examples of decisions
 - Five patrol cars available; one credible event requests three and another requests two: normally approve 3+2, with zero reserve.
