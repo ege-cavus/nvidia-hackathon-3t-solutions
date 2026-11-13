@@ -1,0 +1,63 @@
+{
+  "snapshot_id": "SIM-20261113-001",
+  "simulation_only": true,
+  "services": {
+    "police": {
+      "resources": [
+        {
+          "type": "police_patrol_car",
+          "available": 5,
+          "total": 5
+        },
+        {
+          "type": "police_van",
+          "available": 0,
+          "total": 0
+        },
+        {
+          "type": "police_armed_response_vehicle",
+          "available": 0,
+          "total": 0
+        }
+      ]
+    },
+    "fire": {
+      "resources": [
+        {
+          "type": "fire_engine",
+          "available": 3,
+          "total": 3
+        },
+        {
+          "type": "rescue_unit",
+          "available": 0,
+          "total": 0
+        },
+        {
+          "type": "aerial_appliance",
+          "available": 0,
+          "total": 0
+        }
+      ]
+    },
+    "ambulance": {
+      "resources": [
+        {
+          "type": "ambulance",
+          "available": 3,
+          "total": 3
+        },
+        {
+          "type": "rapid_response_vehicle",
+          "available": 0,
+          "total": 0
+        },
+        {
+          "type": "hazardous_area_response_unit",
+          "available": 0,
+          "total": 0
+        }
+      ]
+    }
+  }
+}
