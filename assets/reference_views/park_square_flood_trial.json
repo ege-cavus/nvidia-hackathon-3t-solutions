@@ -1,0 +1,23 @@
+{
+  "incident_id": 20261113000002,
+  "reference_image": "assets/reference_views/park_square.jpg",
+  "prompt": "Fixed elevated camera overlooking Park Square in Sheffield. The camera remains completely stationary. Preserve the existing buildings, pedestrian bridge, road layout and viewpoint. Over this short time-lapse, muddy flood water flows in from the bottom of the picture and spreads across the foreground traffic lanes, forming broad shallow pools with visible ripples and reflections. By the end the foreground carriageway is clearly covered in standing brown water while the buildings and footbridge remain unchanged. Daylight, realistic water movement. Synthetic emergency training scenario.",
+  "seed": 42,
+  "resolution": "480_16_9",
+  "num_frames": 49,
+  "fps": 12,
+  "attribution": {
+    "creator": "Chris Morgan",
+    "source": "https://commons.wikimedia.org/wiki/File:Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg",
+    "license": "CC BY-SA 2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "changes": "Cosmos Nano image-to-video conditioning adds a fictional flood; extracted review frames are derivatives.",
+    "derivative_license": "CC BY-SA 2.0"
+  },
+  "review_criteria": [
+    "The Park Square buildings, bridge and road layout remain recognisable.",
+    "Standing water is clearly visible across foreground carriageway lanes in a later frame.",
+    "The camera remains fixed without major geometric distortion.",
+    "A stranded car and occupants are not confirmed by this trial; caller claims remain unverified."
+  ]
+}

@@ -17,8 +17,9 @@ It never calls legacy random spawning or intensity escalation.
   report appears at OSM_1952229758 at 2026-11-13T09:06:00Z. world_events.json
   records its parent report separately, keeping caller JSON in the supplied format.
 - media_manifest.json has image/video paths and draft image prompts for all five
-  reports. No images or videos have been generated. Populate assets/incident_media
-  with pre-generated JPGs; missing images are explicitly labelled.
+  reports. Local text-only image drafts have been generated but are unapproved
+  and are not bundled. Populate assets/incident_media with reviewed JPGs;
+  missing images are explicitly labelled. File existence alone is not approval.
 
 All incidents and reports are fictional. Dates and IDs are deterministic demo
 fixtures. Production incident IDs must be assigned transactionally by a database;
@@ -105,6 +106,44 @@ python cosmos_client.py --dry-run
 These prompts generate illustrative synthetic views, not verified reproductions
 of Sheffield CCTV. Review images before feeding them to Qwen. Live generation is
 separate from the report-world clock; a render must not advance scenario time.
+
+## Reference-conditioned Cosmos trial
+
+cosmos_reference.py uses Cosmos Generator's image2video mode with a local photo.
+The NIM does not offer image-to-image; extract later frames from the generated
+clip for a still-image demo. The first frame is a baseline, not evidence that
+the requested hazard appeared. See NVIDIA's [generation API guide](https://nvidia.github.io/cosmos-framework/skills/cookbooks/cosmos3/nim/generation/).
+
+The default trial uses assets/reference_views/park_square.jpg, credited to Chris
+Morgan under CC BY-SA 2.0. Keep the source credit, licence and change description
+with derivatives. These photos are area references, not verified CCTV feeds.
+park_square_flood_trial.json records the prompt, reference, seed, attribution and
+review criteria. It requests 49 frames at 12 fps, 480 tier, from the existing NIM.
+
+```powershell
+python cosmos_reference.py --dry-run
+python cosmos_reference.py --endpoint http://127.0.0.1:18000
+```
+
+Outputs go to ignored demo_output/cosmos_reference/: one MP4, first/middle/last
+JPEGs and a JSON sidecar recording reference/output hashes and settings without
+the base64 input. The client checks that all requested frames decode before
+publishing the clip. Existing outputs are skipped; use --overwrite explicitly
+for a replacement. No request is retried automatically. Rendering can take many
+minutes and must run outside the scenario tick loop.
+
+Outputs start at GENERATED_PENDING_REVIEW, approved_for_qwen=false. Inspect road
+and bridge geometry, camera stability and visible water in later frames before
+selecting any image for a report. A caller's possible stranded car/occupants
+remain unverified if absent from the image. This trial never updates the incident
+manifest or world state automatically.
+
+A completed [Park Square smoke check](assets/reference_views/park_square_flood_trial/README.md)
+includes three review frames, provenance and live Qwen results. Water is visible,
+but camera drift/geometry defects remain. Qwen detected flooding; its image-only
+answer inferred unsupported water depth. The image-plus-report answer kept the
+possible stranded car unconfirmed. One scene is not reliability evidence, and
+none of these responses dispatches resources or modifies world truth.
 
 ## Multiple callers reporting the same incident
 
