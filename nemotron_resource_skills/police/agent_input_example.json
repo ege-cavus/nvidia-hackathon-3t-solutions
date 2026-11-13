@@ -1,0 +1,94 @@
+{
+  "simulation_only": true,
+  "snapshot_id": "SIM-20261113-001",
+  "service": "police",
+  "events": [
+    {
+      "cluster_id": "EVENT-001",
+      "summary": "The Attercliffe warehouse fire is spreading towards the roof. People are running away from a warehouse with smoke pouring out.",
+      "report_count": 15,
+      "source_report_ids": [
+        20261113000001,
+        20261113000002,
+        20261113000003,
+        20261113000004,
+        20261113000005,
+        20261113000006,
+        20261113000007,
+        20261113000008,
+        20261113000009,
+        20261113000010,
+        20261113000011,
+        20261113000012,
+        20261113000013,
+        20261113000014,
+        20261113000015
+      ],
+      "location_label": "Attercliffe"
+    },
+    {
+      "cluster_id": "EVENT-002",
+      "summary": "There's a road accident near the Sheffield Parkway exit. I saw two cars smash into each other near the city-bound slip road.",
+      "report_count": 13,
+      "source_report_ids": [
+        20261113000016,
+        20261113000017,
+        20261113000018,
+        20261113000019,
+        20261113000020,
+        20261113000021,
+        20261113000022,
+        20261113000023,
+        20261113000024,
+        20261113000025,
+        20261113000026,
+        20261113000027,
+        20261113000028
+      ],
+      "location_label": "Sheffield Parkway"
+    },
+    {
+      "cluster_id": "EVENT-003",
+      "summary": "A person has collapsed outside Sheffield railway station. I saw a commuter drop to the floor near the train station doors.",
+      "report_count": 12,
+      "source_report_ids": [
+        20261113000029,
+        20261113000030,
+        20261113000031,
+        20261113000032,
+        20261113000033,
+        20261113000034,
+        20261113000035,
+        20261113000036,
+        20261113000037,
+        20261113000038,
+        20261113000039,
+        20261113000040
+      ],
+      "location_label": "Sheffield Station"
+    },
+    {
+      "cluster_id": "EVENT-004",
+      "summary": "A shop building is on fire in Hillsborough. A storefront near Hillsborough has smoke coming from its roof.",
+      "report_count": 10,
+      "source_report_ids": [
+        20261113000041,
+        20261113000042,
+        20261113000043,
+        20261113000044,
+        20261113000045,
+        20261113000046,
+        20261113000047,
+        20261113000048,
+        20261113000049,
+        20261113000050
+      ],
+      "location_label": "Hillsborough"
+    }
+  ],
+  "resources_available": {
+    "police_patrol_car": 5,
+    "police_van": 0,
+    "police_armed_response_vehicle": 0
+  }
+}

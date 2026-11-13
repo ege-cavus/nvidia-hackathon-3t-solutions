@@ -1,0 +1,107 @@
+{
+  "service": "police",
+  "snapshot_id": "SIM-20261113-001",
+  "proposals": [
+    {
+      "cluster_id": "EVENT-001",
+      "severity_level": 3,
+      "priority_rank": 2,
+      "confidence": "low",
+      "rationale": "Potential scene protection at a reported fire",
+      "evidence_quotes": [
+        "The Attercliffe warehouse fire is spreading towards the roof."
+      ],
+      "missing_information": [
+        "Exact scene conditions and whether police support is required"
+      ],
+      "cross_service_needs": [
+        "fire"
+      ],
+      "resources_requested": [
+        {
+          "type": "police_patrol_car",
+          "quantity": 1,
+          "reason": "Illustrative simulation proposal; not an operational deployment rule"
+        }
+      ],
+      "requires_human_review": true
+    },
+    {
+      "cluster_id": "EVENT-002",
+      "severity_level": 3,
+      "priority_rank": 1,
+      "confidence": "low",
+      "rationale": "Potential traffic management at a reported collision",
+      "evidence_quotes": [
+        "There's a road accident near the Sheffield Parkway exit."
+      ],
+      "missing_information": [
+        "Exact scene conditions and whether police support is required"
+      ],
+      "cross_service_needs": [
+        "ambulance"
+      ],
+      "resources_requested": [
+        {
+          "type": "police_patrol_car",
+          "quantity": 2,
+          "reason": "Illustrative simulation proposal; not an operational deployment rule"
+        }
+      ],
+      "requires_human_review": true
+    },
+    {
+      "cluster_id": "EVENT-003",
+      "severity_level": 1,
+      "priority_rank": 4,
+      "confidence": "low",
+      "rationale": "No police-specific danger described",
+      "evidence_quotes": [
+        "A person has collapsed outside Sheffield railway station."
+      ],
+      "missing_information": [
+        "Exact scene conditions and whether police support is required"
+      ],
+      "cross_service_needs": [
+        "ambulance"
+      ],
+      "resources_requested": [],
+      "requires_human_review": true
+    },
+    {
+      "cluster_id": "EVENT-004",
+      "severity_level": 2,
+      "priority_rank": 3,
+      "confidence": "low",
+      "rationale": "Possible scene safety at reported shop fire",
+      "evidence_quotes": [
+        "A shop building is on fire in Hillsborough."
+      ],
+      "missing_information": [
+        "Exact scene conditions and whether police support is required"
+      ],
+      "cross_service_needs": [
+        "fire"
+      ],
+      "resources_requested": [
+        {
+          "type": "police_patrol_car",
+          "quantity": 1,
+          "reason": "Illustrative simulation proposal; not an operational deployment rule"
+        }
+      ],
+      "requires_human_review": true
+    }
+  ],
+  "total_requested": {
+    "police_patrol_car": 4,
+    "police_van": 0,
+    "police_armed_response_vehicle": 0
+  },
+  "unmet_demand": {
+    "police_patrol_car": 0,
+    "police_van": 0,
+    "police_armed_response_vehicle": 0
+  },
+  "requires_human_review": true
+}

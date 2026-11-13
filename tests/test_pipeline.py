@@ -409,3 +409,69 @@ async def test_claude_code_provider_dispatch_and_trace(tmp_path, monkeypatch):
 
 def test_extract_json_strips_reasoning():
     assert extract_json('<think>hmm {"no": 1}</think>\n```json\n{"a": 1}\n```') == {"a": 1}
+
+
+# ---- Nemotron skills as knowledge ------------------------------------------------------ #
+
+
+def test_skills_are_loaded_without_their_io_contract():
+    from urban_response import skills
+    for a in ("police", "ambulance", "fire"):
+        k = skills.service_skill(a)
+        assert "Assessment method" in k and "Guardrails" in k and "severity 1–5" in k
+        assert "proposal_schema" not in k and "police_patrol_car" not in k and "requires_human_review" not in k
+    arb = skills.arbiter_skill()
+    assert "Respect specialist proposals" in arb and "allocator_output_schema" not in arb
+    assert "Human review is mandatory" not in arb
+
+
+async def test_agents_and_cr_get_their_skills(db, settings, monkeypatch):
+    seen = {}
+
+    async def fake(ep, system, user, out, **k):
+        seen[k.get("label", "")] = system
+        raise LLMError("only capturing prompts")
+
+    patch_all(monkeypatch, fake)
+    res = await Orchestrator(db, live(settings)).handle(load("sheffield_demo.json")[0])  # trapped casualties: all three agencies
+    assert "fire-and-rescue-focused assessment agent" in seen["A3 fire"] and "resource_type MUST be one of" in seen["A3 fire"]
+    assert "ambulance-focused" in seen["A2 ambulance"] and "police-focused" in seen["A1 police"]
+    assert "ARBITER SKILL" in seen["CR"] and "Respect specialist proposals" in seen["CR"] and "preempt" in seen["CR"]
+    # rule fallbacks still cite the skill as knowledge
+    assert any(c.startswith("skill:") for a in res.response.agent_responses for c in a.kb_citations)
+
+
+# ---- vehicle lifecycle timing ------------------------------------------------------------ #
+
+
+async def test_vehicle_cycle_and_replenishment(db, settings):
+    from datetime import datetime, timedelta, timezone
+    from urban_response import timing
+    res = await Orchestrator(db, settings).handle(load("simple_rtc.json")[0])  # 1 casualty
+    allocs = res.response.allocations
+    for a in allocs:
+        assert [s["stage"] for s in a.timeline] == list(timing.STAGES)
+        assert a.back_in_service_min == timing.total_minutes(a.timeline) > a.eta_min
+    amb = [a for a in allocs if a.resource_type == "emergency_ambulance"]
+    assert amb and "conveying to" in amb[0].timeline[2]["detail"] and "handover" in amb[0].timeline[3]["detail"]
+    car = next(a for a in allocs if a.resource_type == "patrol_car")
+    assert car.timeline[3]["minutes"] == timing.COOLDOWN_MIN["patrol_car"][0]
+
+    fleet = {f["unit_id"]: f for f in db.fleet()}
+    assert fleet[amb[0].unit_id]["stage"] == "en_route"
+    # Move the clock: 1 simulated minute before the cycle ends, the ambulance is in cooldown; after it, it is released.
+    start = datetime.now(timezone.utc) - timedelta(minutes=amb[0].back_in_service_min - 1)
+    db._conn.execute("UPDATE allocations SET start_at = ? WHERE unit_id = ?", (start.isoformat(), amb[0].unit_id))
+    db._conn.commit()
+    assert {f["unit_id"]: f for f in db.fleet()}[amb[0].unit_id]["stage"] == "cooldown"
+    db._conn.execute("UPDATE allocations SET expected_release_at = '2000-01-01T00:00:00+00:00' WHERE unit_id = ?", (amb[0].unit_id,))
+    db._conn.commit()
+    assert [u["unit_id"] for u in db.release_due()] == [amb[0].unit_id]
+    assert amb[0].unit_id not in {f["unit_id"] for f in db.fleet()}  # back in the inventory
+
+
+def test_major_trauma_goes_to_northern_general(db):
+    from urban_response import timing
+    unit = db.available_units("emergency_ambulance", 53.38, -1.47)[0]
+    t = timing.timeline(db, unit, "emergency_ambulance", unit["eta_min"], 30, 53.3770, -1.4830, severity=5, conveys=True)
+    assert "Northern General" in t[2]["detail"]

@@ -168,7 +168,13 @@ def console_state():
     db = state["db"]
     jobs = [{"job_id": k, "incident_id": j["incident_id"], "label": j["label"], "done": j["done"],
              "outcome": j.get("outcome")} for k, j in state["jobs"].items()]
-    return {"incidents": db.incidents(), "inventory": db.inventory(), "personnel": db.personnel_inventory(),
+    fleet = db.fleet()
+    by_type: dict = {}
+    for f in fleet:
+        by_type.setdefault(f["resource_type"], {}).setdefault(f["stage"], 0)
+        by_type[f["resource_type"]][f["stage"]] += 1
+    inventory = [r | {"out_by_stage": by_type.get(r["resource_type"], {})} for r in db.inventory()]
+    return {"incidents": db.incidents(), "inventory": inventory, "fleet": fleet, "personnel": db.personnel_inventory(),
             "stations": db.stations(), "jobs": jobs[-30:],
             "jobs_running": sum(1 for j in state["jobs"].values() if not j["done"]),
             "time_scale": float(os.getenv("UR_TIME_SCALE", "1"))}

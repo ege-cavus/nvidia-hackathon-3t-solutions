@@ -1,0 +1,26 @@
+# systemd unit for the SURU API on the DGX Spark. Model servers restart on their own
+# (docker compose restart: unless-stopped); this keeps the API up across reboots and SSH drops.
+#
+# Install (replace USER and the repo path):
+#   sudo cp deploy/dgx/suru-api.service /etc/systemd/system/
+#   sudo sed -i "s#__USER__#$USER#; s#__REPO__#$PWD#" /etc/systemd/system/suru-api.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now suru-api
+#   journalctl -u suru-api -f
+
+[Unit]
+Description=SURU urban response API
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+User=__USER__
+WorkingDirectory=__REPO__
+Environment=PATH=/home/__USER__/.local/bin:/usr/local/bin:/usr/bin:/bin
+# start.sh waits for the model servers' /models before launching (exits 1 if they are down,
+# and systemd retries every 20 s until they are).
+ExecStart=__REPO__/deploy/dgx/start.sh
+Restart=always
+RestartSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -58,6 +58,20 @@ Agents are shown `{incident, triage}`, and every response carries both.
 - **Audit:** each report stores its decision (MiniLM's proposal, the candidates shown, the final verdict and who made it) on the incident row.
 - **Offline use:** run `urban-response prefetch` once, then `HF_HUB_OFFLINE=1`. `UR_MINILM_MODEL` can point to a local model directory.
 
+**Nemotron skills as knowledge** ([skills.py](urban_response/skills.py)): `nemotron_resource_skills/` is vendored unchanged from `origin/main`.
+- **A1, A2, A3:** each agent's system prompt includes its service `SKILL.md`: role, assessment method, the 1–5 service severity scale, guardrails and resource-proposal principles. Agents record `service_severity`, `evidence_quotes`, `missing_information` and `contradictions` in `specialist_metadata`.
+- **CR:** gets `resource_allocator_skill/SKILL.md` as its decision policy. Specialist quantities are the default, cuts need a specific rationale, there are no cross-service transfers and no arbitrary reserves. Reassigning a unit is allowed only when code offers it as a valid option.
+- **Left out:** the parts of the skills that define their own I/O contract (`proposal_schema.json`, their resource names, ranking and totals bookkeeping, human-review flags). They would clash with this pipeline's schemas.
+- **Setting:** `UR_SKILLS_DIR` overrides the folder location.
+
+**Vehicle cycle and replenishment** ([timing.py](urban_response/timing.py)) follows `main`'s 4-stage lifecycle:
+- **en route:** ETA from the station.
+- **on scene:** the requested duration.
+- **returning:** back to the station. An ambulance carrying a casualty goes via the receiving hospital (major trauma centre at severity 4 or more).
+- **cooldown:** per-type restock or handover, for example breathing-apparatus refill, decontamination or clean-down.
+
+The vehicle and its crew return to the inventory only when the cycle ends. The unit-return loop does this automatically and logs it in the inventory ledger. `/api/state` shows each vehicle's current stage (`fleet`) and what's out by stage per resource type. `UR_TIME_SCALE` speeds up the clock for demos.
+
 **Crews** ([resources.py](urban_response/resources.py)): every vehicle type needs specific specialities (for example a fire engine needs 1 crew commander and 3 firefighters; an ARV needs 2 firearms officers). The allocator crews each vehicle from its own station first, then from the nearest stations. A vehicle that can't be crewed is not sent. A shortfall of people is its own hard conflict (`crew_shortfall`).
 
 **Life-safety floors** ([manifest.py](urban_response/manifest.py)): CR may trim, but never below these minimums:
@@ -125,14 +139,23 @@ The demo runs the scenarios in sequence against shared resources, so later incid
 
 ## Running with the models on the DGX Spark
 
-Serve both models with any OpenAI-compatible server (vLLM, NIM, SGLang) on separate ports, then:
+Default stack ([deploy/dgx/models.compose.yml](deploy/dgx/models.compose.yml)), two vLLM servers from the NGC image built for GB10:
+
+| Role | Checkpoint | Served as | Port | Memory cap |
+|---|---|---|---|---|
+| Qwen orchestrator (ingest, route, evaluate) | `Qwen/Qwen3.5-35B-A3B-FP8` | `qwen3.5` | 8001 | 0.40 |
+| Nemotron A1 police, A2 ambulance, A3 fire, CR | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8` | `nemotron-3-nano` | 8002 | 0.38 |
+
+On the Spark:
 
 ```bash
-export LLM_MODE=live
-export QWEN_BASE_URL=http://localhost:8000/v1      QWEN_MODEL=<served qwen model name>
-export NEMOTRON_BASE_URL=http://localhost:8001/v1  NEMOTRON_MODEL=<served nemotron model name>
-uv run urban-response demo --reset
+cp deploy/dgx/env.example deploy/dgx/.env   # set HF_TOKEN and UR_API_TOKEN
+./deploy/dgx/setup.sh                        # preflight, start both servers, uv sync, cache MiniLM, smoke test
+./deploy/dgx/start.sh                        # API on :8080 (or install deploy/dgx/suru-api.service)
+uv run urban-response smoke                  # re-check any time: fails if any stage is tagged `fallback`
 ```
+
+`smoke` checks three things: each endpoint serves the configured model name, a structured probe comes back as valid JSON with no `<think>` trace (latency printed), and one full incident runs on a throwaway DB with every stage served by a model.
 
 All four Nemotron agents (A1-A3 and CR) share one Nemotron endpoint by default. Set `CR_BASE_URL` / `CR_MODEL` to run CR separately. They differ in persona, knowledge base and allowed resource types. Calls use `response_format=json_schema` (guided decoding) and turn thinking off through the chat template. If the server rejects either, set `UR_GUIDED_JSON=0` or `UR_DISABLE_THINKING=0`.
 

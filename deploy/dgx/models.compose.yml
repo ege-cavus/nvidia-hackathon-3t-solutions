@@ -1,0 +1,85 @@
+# Model servers for SURU on one DGX Spark (GB10, 128 GB unified memory).
+#
+#   Qwen 3.5      orchestrator: ingest/triage, route, evaluate           -> 127.0.0.1:8001
+#   Nemotron 3    one server shared by A1 police, A2 ambulance, A3 fire  -> 127.0.0.1:8002
+#                 and CR (same weights, four personas; vLLM batches the parallel calls)
+#
+# Usage (from repo root; deploy/dgx/setup.sh wraps all of this):
+#   docker compose -f deploy/dgx/models.compose.yml --env-file deploy/dgx/.env up -d
+#
+# Memory: both are FP8 MoE models (~3B active params), ~35 GB and ~32 GB of weights. The two
+# GPU_MEM caps are fractions of total memory and must sum to <= ~0.80 to leave room for the OS,
+# the SURU API and MiniLM. Lower MAX_MODEL_LEN before lowering the caps if a server fails to start.
+
+x-vllm: &vllm
+  image: ${VLLM_IMAGE:-nvcr.io/nvidia/vllm:26.05.post1-py3}
+  restart: unless-stopped
+  ipc: host
+  ulimits: { memlock: -1, stack: 67108864 }
+  deploy:
+    resources:
+      reservations:
+        devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
+  volumes:
+    - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+  entrypoint: ["vllm", "serve"]
+
+services:
+  qwen:
+    <<: *vllm
+    container_name: suru-qwen
+    ports: ["127.0.0.1:8001:8000"]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+    command:
+      - ${QWEN_HF_MODEL:-Qwen/Qwen3.5-35B-A3B-FP8}
+      - --served-model-name=${QWEN_MODEL:-qwen3.5}
+      - --host=0.0.0.0
+      - --port=8000
+      - --gpu-memory-utilization=${QWEN_GPU_MEM:-0.40}
+      - --max-model-len=${QWEN_MAX_MODEL_LEN:-32768}
+      - --max-num-seqs=${QWEN_MAX_SEQS:-16}
+      - --kv-cache-dtype=fp8
+      - --enable-prefix-caching
+      - --reasoning-parser=qwen3
+      - --language-model-only   # text only: skip the vision encoder, saves memory
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 900s
+
+  nemotron:
+    <<: *vllm
+    container_name: suru-nemotron
+    # Start after Qwen has claimed its memory: vLLM sizes its KV cache from free memory at
+    # startup, and two servers profiling at once on unified memory can both over-claim.
+    depends_on:
+      qwen: { condition: service_healthy }
+    ports: ["127.0.0.1:8002:8000"]
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      VLLM_USE_FLASHINFER_MOE_FP8: "1"
+    volumes:
+      - ${HF_CACHE:-~/.cache/huggingface}:/root/.cache/huggingface
+      - ./plugins:/plugins:ro   # nano_v3_reasoning_parser.py, fetched by setup.sh
+    command:
+      - ${NEMOTRON_HF_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8}
+      - --served-model-name=${NEMOTRON_MODEL:-nemotron-3-nano}
+      - --host=0.0.0.0
+      - --port=8000
+      - --trust-remote-code
+      - --gpu-memory-utilization=${NEMOTRON_GPU_MEM:-0.38}
+      - --max-model-len=${NEMOTRON_MAX_MODEL_LEN:-32768}
+      - --max-num-seqs=${NEMOTRON_MAX_SEQS:-16}
+      - --kv-cache-dtype=fp8
+      - --enable-prefix-caching
+      - --reasoning-parser-plugin=/plugins/nano_v3_reasoning_parser.py
+      - --reasoning-parser=nano_v3
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 900s

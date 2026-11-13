@@ -26,6 +26,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .. import manifest as mf
+from .. import skills
 from ..briefing import normalise_directives
 from ..config import Settings
 from ..conflicts import hard, soft
@@ -60,11 +61,25 @@ SYSTEM = (
     "property and evidence. Never send things just to send them; never under-send where lives are at stake."
 )
 
+
+def system_prompt() -> str:
+    """CR's system prompt, with the arbiter skill (nemotron_resource_skills/resource_allocator_skill) as its policy."""
+    skill = skills.arbiter_skill()
+    if not skill:
+        return SYSTEM
+    return (SYSTEM + "\n\nARBITER SKILL (nemotron_resource_skills/resource_allocator_skill/SKILL.md): apply this decision "
+            "policy when you declare the manifest and resolve shortages.\n" + skill +
+            "\n\nHow it maps onto this system: the agents' requests are the specialist proposals. Reassigning a unit "
+            "already committed is allowed only when the code offers it as a 'preempt' option (from an incident at least two "
+            "severity levels lower); substitutes are allowed only from substitutes_with_spare_units, which is the "
+            "interchangeability data. Your decision is final; there is no human review step. Output format: as instructed below.")
+
 INSTRUCTIONS = """Make the final decision for this incident.
 
 1. MANIFEST: declare the final quantity of each resource type to send and which agency it serves.
    - One drone or mobile command unit serves the whole scene; do not send one per agency.
-   - Drop nice-to-haves that do not change the outcome for this incident.
+   - The agencies' quantities are the default (ARBITER SKILL). Cut a unit only with a specific rationale: redundant,
+     speculative, unsupported by the report, or duplicating a task already covered. Say why in its reason.
    - Where people are injured, trapped or at risk, send what is needed in abundance.
    - Use only resource types from the catalogue. Quantity 0 means not sent.
    - reason: one short line, e.g. "one per P1 casualty", "shared scene overwatch".
@@ -193,7 +208,7 @@ class ConflictResolverAgent:
             return fallback_manifest, None, [], fallback_dirs, ExecutedBy.mock, "Rule policy (mock mode)"
         prompt = self.build_prompt(incident, routing, responses, raw_conflicts, rule_soft, floors)
         try:
-            d, _ = await chat_json(self.settings.resolver, SYSTEM, prompt, CRDecision, label="CR")
+            d, _ = await chat_json(self.settings.resolver, system_prompt(), prompt, CRDecision, label="CR")
         except LLMError as e:
             log.warning("CR fell back to rules: %s", e)
             return fallback_manifest, None, [], fallback_dirs, ExecutedBy.fallback, f"Rule policy (CR unavailable: {e})"

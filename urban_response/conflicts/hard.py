@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from .. import timing
 from ..db import Database, eta_minutes, haversine_km
 from ..resources import crew_for
 from ..schemas import (
@@ -299,18 +300,26 @@ def allocate(
             crew += [CrewMember(person_id=p["person_id"], speciality=spec, station=p["station"]) for p in free[:k]]
         return crew
 
-    def assign(u: dict, rtype: str, agency: Agency, crew: list[CrewMember], preempted_from: str | None = None) -> None:
+    conveying = [0]  # ambulances that will carry a casualty to hospital so far
+
+    def assign(u: dict, rtype: str, agency: Agency, crew: list[CrewMember], preempted_from: int | None = None,
+               on_scene_min: int | None = None) -> None:
         taken.add(u["unit_id"])
         taken_people.update(m.person_id for m in crew)
+        conveys = rtype == "emergency_ambulance" and conveying[0] < getattr(incident, "casualties_reported", 0)
+        if conveys:
+            conveying[0] += 1
+        stages = timing.timeline(db, u, rtype, u["eta_min"], on_scene_min, loc.lat, loc.lon, incident.severity, conveys)
         allocations.append(
             UnitAllocation(
                 unit_id=u["unit_id"], callsign=u["callsign"], resource_type=rtype, agency=Agency(u["agency"]),
                 station=u["station"], eta_min=u["eta_min"], requested_by=agency, preempted_from=preempted_from,
                 crew=crew, task=tasks.get((agency.value, rtype), ""),
+                timeline=stages, back_in_service_min=timing.total_minutes(stages),
             )
         )
 
-    def take_from(candidates: list[dict], rtype: str, agency: Agency, need: int) -> tuple[int, int]:
+    def take_from(candidates: list[dict], rtype: str, agency: Agency, need: int, on_scene_min: int | None = None) -> tuple[int, int]:
         """Assign up to `need` crewed vehicles. Returns (assigned, skipped_for_crew)."""
         got = skipped = 0
         for u in candidates:
@@ -320,7 +329,7 @@ def allocate(
             if crew is None:
                 skipped += 1
                 continue
-            assign(u, rtype, agency, crew)
+            assign(u, rtype, agency, crew, on_scene_min=on_scene_min)
             got += 1
         return got, skipped
 
@@ -339,7 +348,7 @@ def allocate(
             max_eta = None
         crew_blocked = 0
         if rtype in catalogue:
-            got, crew_blocked = take_from(pool(rtype, max_eta), rtype, d.agency, need)
+            got, crew_blocked = take_from(pool(rtype, max_eta), rtype, d.agency, need, d.request.expected_duration_min)
             need -= got
 
         if need and res and res.action == ResolutionAction.preempt:
@@ -354,11 +363,12 @@ def allocate(
                     unit["eta_min"] = eta_minutes(holder["lat"], holder["lon"], loc.lat, loc.lon)
                     crew = [CrewMember(person_id=m["person_id"], speciality=m["speciality"], station=m["station"])
                             for m in db.crew_of_unit(uid)]  # the crew moves with its vehicle
-                    assign(unit, rtype, d.agency, crew, preempted_from=holder["incident_id"])
+                    assign(unit, rtype, d.agency, crew, preempted_from=holder["incident_id"],
+                           on_scene_min=d.request.expected_duration_min)
                     need -= 1
 
         if need and res and res.action == ResolutionAction.substitute and res.substitute_type:
-            got, _ = take_from(pool(res.substitute_type, None), res.substitute_type, d.agency, need)
+            got, _ = take_from(pool(res.substitute_type, None), res.substitute_type, d.agency, need, d.request.expected_duration_min)
             need -= got
 
         if need:

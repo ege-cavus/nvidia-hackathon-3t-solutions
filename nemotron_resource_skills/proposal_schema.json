@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nemotron service assessment and resource proposal (simulation)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "service",
+    "snapshot_id",
+    "proposals",
+    "total_requested",
+    "unmet_demand",
+    "requires_human_review"
+  ],
+  "properties": {
+    "service": {
+      "enum": [
+        "police",
+        "fire",
+        "ambulance"
+      ]
+    },
+    "snapshot_id": {
+      "type": "string"
+    },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cluster_id",
+          "severity_level",
+          "priority_rank",
+          "confidence",
+          "rationale",
+          "evidence_quotes",
+          "missing_information",
+          "cross_service_needs",
+          "resources_requested",
+          "requires_human_review"
+        ],
+        "properties": {
+          "cluster_id": {
+            "type": "string"
+          },
+          "severity_level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "priority_rank": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "confidence": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "evidence_quotes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missing_information": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cross_service_needs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "police",
+                "fire",
+                "ambulance"
+              ]
+            }
+          },
+          "resources_requested": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "type",
+                "quantity",
+                "reason"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "requires_human_review": {
+            "const": true
+          }
+        }
+      }
+    },
+    "total_requested": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "unmet_demand": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "requires_human_review": {
+      "const": true
+    }
+  }
+}

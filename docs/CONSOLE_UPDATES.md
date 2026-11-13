@@ -125,22 +125,18 @@ Keep the SSE event model, `textContent`-only rendering, the honest `fallback` ba
 
 ## B3. Setting up the DGX Spark
 
-**1. Serve the models** (any OpenAI-compatible server; keep them off :8080). Example with vLLM containers; both models share the 128 GB of unified memory, so cap each one:
+**1. Serve the models.** Qwen 3.5 35B-A3B (FP8) on :8001 and Nemotron 3 Nano 30B-A3B (FP8) on :8002, both vLLM from the NGC image, defined in `deploy/dgx/models.compose.yml`. One script does the whole bring-up, including a live smoke test:
 ```bash
-docker run -d --gpus all --name qwen -p 127.0.0.1:8001:8000 <vllm-image> \
-  vllm serve <qwen-model> --gpu-memory-utilization 0.35
-docker run -d --gpus all --name nemotron -p 127.0.0.1:8002:8000 <vllm-image> \
-  vllm serve <nemotron-model> --gpu-memory-utilization 0.45
-curl -s localhost:8001/v1/models; curl -s localhost:8002/v1/models
+cp deploy/dgx/env.example deploy/dgx/.env      # HF_TOKEN, UR_API_TOKEN=$(openssl rand -hex 32)
+./deploy/dgx/setup.sh
 ```
-Ollama alternative: a single server on `:11434/v1` for both models. Set `UR_GUIDED_JSON=0` if it rejects `json_schema`.
+The first run downloads about 70 GB of weights. Nemotron starts only after Qwen is healthy, so the two servers don't both size their KV cache from the same free memory.
 
 **2. Start the API**
 ```bash
 uv sync                                        # large install: sentence-transformers pulls in torch
 uv run urban-response prefetch                 # once, while online: caches the MiniLM dedup model
-cp deploy/dgx/env.example deploy/dgx/.env      # fill model names; UR_API_TOKEN=$(openssl rand -hex 32)
-./deploy/dgx/start.sh                          # → http://<spark-ip>:8080 on the LAN
+./deploy/dgx/start.sh                          # → http://<spark-ip>:8080 on the LAN; checks both servers serve the configured names
 ```
 `.env` sets `HF_HUB_OFFLINE=1`, so the duplicate detector never needs the internet during the demo. `start.sh` refuses to start if the model isn't cached.
 

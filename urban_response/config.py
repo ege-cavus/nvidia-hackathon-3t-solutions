@@ -43,6 +43,7 @@ def _endpoint(url_env: str, url_default: str, model_env: str, model_default: str
         base_url=os.getenv(url_env, url_default),
         model=os.getenv(model_env, model_default),
         api_key=os.getenv(key_env, "not-needed"),
+        timeout_s=float(os.getenv("UR_LLM_TIMEOUT_S", "120")),
     )
 
 
@@ -50,17 +51,17 @@ def _endpoint(url_env: str, url_default: str, model_env: str, model_default: str
 class Settings:
     llm_mode: str = field(default_factory=lambda: os.getenv("LLM_MODE", "mock"))  # "live" | "mock"
     orchestrator: ModelEndpoint = field(
-        default_factory=lambda: _endpoint("QWEN_BASE_URL", "http://localhost:8000/v1",
-                                          "QWEN_MODEL", "Qwen/Qwen3.5", "QWEN_API_KEY")
+        default_factory=lambda: _endpoint("QWEN_BASE_URL", "http://127.0.0.1:8001/v1",
+                                          "QWEN_MODEL", "qwen3.5", "QWEN_API_KEY")
     )
     specialist: ModelEndpoint = field(
-        default_factory=lambda: _endpoint("NEMOTRON_BASE_URL", "http://localhost:8001/v1",
-                                          "NEMOTRON_MODEL", "nvidia/nemotron", "NEMOTRON_API_KEY")
+        default_factory=lambda: _endpoint("NEMOTRON_BASE_URL", "http://127.0.0.1:8002/v1",
+                                          "NEMOTRON_MODEL", "nemotron-3-nano", "NEMOTRON_API_KEY")
     )
     # CR (conflict resolution) is a Nemotron agent too; by default it shares the specialists' server.
     resolver: ModelEndpoint = field(
-        default_factory=lambda: _endpoint("CR_BASE_URL", os.getenv("NEMOTRON_BASE_URL", "http://localhost:8001/v1"),
-                                          "CR_MODEL", os.getenv("NEMOTRON_MODEL", "nvidia/nemotron"), "CR_API_KEY")
+        default_factory=lambda: _endpoint("CR_BASE_URL", os.getenv("NEMOTRON_BASE_URL", "http://127.0.0.1:8002/v1"),
+                                          "CR_MODEL", os.getenv("NEMOTRON_MODEL", "nemotron-3-nano"), "CR_API_KEY")
     )
     db_path: Path = field(default_factory=lambda: Path(os.getenv("UR_DB_PATH", str(ROOT / "data" / "urban_response.db"))))
     kb_dir: Path = field(default_factory=lambda: Path(os.getenv("UR_KB_DIR", str(ROOT / "knowledge_base"))))

@@ -153,6 +153,8 @@ def build_brief(db: Database, incident_id: str) -> dict | None:
         units.append({
             "callsign": a.callsign, "type": a.resource_type.replace("_", " "), "agency": a.agency.value,
             "station": a.station, "eta_min": a.eta_min, "task": a.task, "reassigned_from": a.preempted_from,
+            "back_in_service_min": a.back_in_service_min,
+            "cycle": " → ".join(f"{s['stage'].replace('_', ' ')} {s['minutes']:.0f}" for s in a.timeline),
             "crew": [f"{n} {s.replace('_', ' ')}" for s, n in Counter(m.speciality for m in a.crew).items()],
         })
     orders: dict[str, list[dict]] = {}

@@ -302,6 +302,10 @@ body.brief { background: var(--paper); color: var(--ink); }
       <div class="res" id="resList"></div>
     </div>
     <div class="card">
+      <h2>Fleet out <span class="right hint">stage · back in service</span></h2>
+      <div class="ledger" id="fleet"><div class="hint">Every vehicle at its station.</div></div>
+    </div>
+    <div class="card">
       <h2>Personnel on shift <span class="right hint">free / on shift</span></h2>
       <div class="res" id="staffList"></div>
     </div>
@@ -414,6 +418,7 @@ async function refreshState() {
   drawStations(st.stations); drawIncidents(st.incidents);
   $("resetBtn").disabled = st.jobs_running > 0;
   $("scaleNote").textContent = st.time_scale > 1 ? `time ×${st.time_scale}` : "";
+  renderFleet(st.fleet || []);
   try { renderLedger(await api("/api/ledger?limit=40")); } catch (e) { /* ledger is optional */ }
   return st;
 }
@@ -426,6 +431,16 @@ function renderBars(box, rows, key, totalKey) {
     const cls = r.available <= 0 ? "zero" : p < 34 ? "low" : "";
     box.append(h("span", { class: "name" }, nice(r[key])), h("div", { class: "bar" }, h("span", { class: cls, style: `width:${p}%` })),
       h("span", { class: "n" }, `${r.available}/${total}`));
+  }
+}
+function renderFleet(rows) {
+  const box = $("fleet"); box.replaceChildren();
+  if (!rows.length) { box.append(h("div", { class: "hint" }, "Every vehicle at its station.")); return; }
+  const scale = LAST_STATE?.time_scale || 1;
+  for (const f of rows.slice(0, 40)) {
+    const back = f.back_in_service_min == null ? "?" : `${Math.max(0, Math.ceil(f.back_in_service_min))} min` + (scale > 1 ? ` (${Math.ceil(f.back_in_service_min / scale * 60)} s real)` : "");
+    box.append(h("div", { title: f.detail || "" }, h("span", {}, f.callsign), h("span", { class: "ev-" + (f.stage === "cooldown" || f.stage === "returning" ? "returned" : "dispatched") }, nice(f.stage)),
+      h("span", {}, `back in ${back} · ${f.incident_id}`)));
   }
 }
 function renderLedger(rows) {
@@ -812,6 +827,7 @@ async function bootBrief(id) {
       h("section", {}, h("h3", {}, `Units (${units.length})`),
         units.map((u) => h("div", { class: "b-unit" }, h("div", { class: "l1" }, h("span", {}, `${u.callsign} · ${u.type}`), h("span", {}, `ETA ${Math.round(u.eta_min)} min`)),
           h("div", { class: "l2" }, `${u.station}${u.reassigned_from ? `, reassigned from ${u.reassigned_from}` : ""} · ${u.crew.join(", ")}`),
+          u.cycle ? h("div", { class: "l2" }, `Cycle (min): ${u.cycle}`) : null,
           u.task ? h("div", { class: "l2" }, u.task) : null)),
         b.gaps.length ? h("p", { style: "color:var(--bad)" }, "Not yet covered: " + b.gaps.join("; ")) : null),
       h("section", {}, h("h3", {}, "Incident log"),

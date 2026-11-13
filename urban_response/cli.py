@@ -9,6 +9,7 @@
   urban-response serve              start the HTTP API
   urban-response trace FILE         print a readable transcript of a --trace file
   urban-response prefetch           cache the MiniLM dedup model (then HF_HUB_OFFLINE=1 works)
+  urban-response smoke [--quick]    live check of the DGX Spark model servers (fails on any fallback)
 """
 
 from __future__ import annotations
@@ -132,6 +133,9 @@ def main() -> None:
     b.add_argument("--json", action="store_true")
     b.add_argument("--reset", action="store_true")
     b.add_argument("--trace", type=Path, help="Append every LLM call (prompt + reply) to this JSONL file")
+    sm = sub.add_parser("smoke", help="Check the live model servers end to end; exit 1 on any failure or fallback")
+    sm.add_argument("--quick", action="store_true", help="Reachability + structured probe only, skip the full pipeline run")
+    sm.add_argument("--trace", type=Path, help="Append every LLM call (prompt + reply) to this JSONL file")
     t = sub.add_parser("trace")
     t.add_argument("file", type=Path)
     t.add_argument("--full", action="store_true", help="Show full prompts instead of the first lines")
@@ -155,6 +159,10 @@ def main() -> None:
         dedup.load_model()
         print(f"MiniLM ready: {dedup.MODEL}. Set HF_HUB_OFFLINE=1 to run without internet.")
         return
+    if args.cmd == "smoke":
+        from . import smoke
+
+        raise SystemExit(smoke.main(settings, skip_pipeline=args.quick))
     if args.cmd == "trace":
         print_trace(args.file, args.full)
         return

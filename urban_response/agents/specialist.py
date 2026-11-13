@@ -14,6 +14,7 @@ import logging
 from ..config import Settings
 from ..db import Database
 from ..kb import KnowledgeBase
+from .. import skills
 from ..llm import LLMError, chat_json
 from ..schemas import AGENT_ID, AgentResponse, Agency, ExecutedBy, Case, RoutingDecision
 from .heuristics import HEURISTICS, AgentDraft
@@ -35,7 +36,9 @@ RULES = """Decide the {agency} response to the incident.
 - Fill scene_constraints precisely: cordon radii and distances in metres, scene_entry open/controlled/prohibited,
   requires_scene_entry if your crews must go into the scene, road closures and access routes by road name.
 - Put agency-specific facts (triage category, command level, threat level, receiving hospital...) in
-  mission_details.specialist_metadata.
+  mission_details.specialist_metadata. Also record there, following your SERVICE SKILL:
+  service_severity (1-5 on the skill's scale for your service), evidence_quotes (verbatim from the report),
+  missing_information, contradictions.
 - Cite the knowledge-base sections you relied on in kb_citations using their [id]."""
 
 
@@ -55,7 +58,12 @@ class SpecialistAgent:
                           *(p.notes or "" for p in incident.incident.patients)])
         chunks = self.kb.search(query, self.settings.kb_top_k)
         kb_text = "\n\n".join(f"[{c.citation}]\n{c.text}" for c in chunks) or "(no matching guidance)"
-        system = PERSONAS[self.agency] + "\n\n" + RULES.format(agency=self.agency.value, types=", ".join(self.allowed_types()))
+        skill = skills.service_skill(self.agency.value)
+        skill_block = (f"\n\nSERVICE SKILL (nemotron_resource_skills/{self.agency.value}/SKILL.md). Use it to assess the "
+                       f"report and size your request; where it differs from the output format below, the format below wins:\n{skill}"
+                       if skill else "")
+        system = (PERSONAS[self.agency] + skill_block + "\n\n"
+                  + RULES.format(agency=self.agency.value, types=", ".join(self.allowed_types())))
         context = {
             **incident.prompt_view(),  # canonical incident + triage (+ nearby context)
             "agencies_tasked": [a.value for a in routing.agencies],
@@ -64,7 +72,8 @@ class SpecialistAgent:
         if self.agency == Agency.ambulance:
             context["receiving_hospitals"] = self.db.hospitals(incident.location.lat, incident.location.lon)
         user = f"INCIDENT AND CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nKNOWLEDGE BASE:\n{kb_text}"
-        return system, user, [c.citation for c in chunks]
+        citations = ([skills.citation(self.agency.value)] if skill else []) + [c.citation for c in chunks]
+        return system, user, citations
 
     async def respond(self, incident: Case, routing: RoutingDecision) -> AgentResponse:
         system, user, citations = self.build_prompt(incident, routing)
@@ -81,6 +90,8 @@ class SpecialistAgent:
             draft, executed = HEURISTICS[self.agency](incident), ExecutedBy.mock
             draft.kb_citations = citations
 
+        if citations and citations[0].startswith("skill:") and citations[0] not in draft.kb_citations:
+            draft.kb_citations = [citations[0], *draft.kb_citations]  # the service skill is always part of the knowledge used
         return AgentResponse(
             agent_id=self.agent_id,
             agency=self.agency,

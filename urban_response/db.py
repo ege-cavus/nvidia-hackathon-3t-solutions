@@ -27,7 +27,7 @@ from typing import Iterator
 
 from .schemas import Case, Incident, IncidentResponse, IncidentStatus, Triage
 
-SCHEMA_VERSION = 5  # bump when tables change; older demo DBs are rebuilt
+SCHEMA_VERSION = 6  # bump when tables change; older demo DBs are rebuilt
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS units (
@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS allocations (
     incident_id         INTEGER NOT NULL REFERENCES incidents(incident_id),
     requested_by        TEXT NOT NULL,
     start_at            TEXT NOT NULL,
-    expected_release_at TEXT NOT NULL,
+    expected_release_at TEXT NOT NULL,                -- end of the vehicle's cycle (timing.py)
+    timeline_json       TEXT,                         -- en_route / on_scene / returning / cooldown
     released_at         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_alloc_active ON allocations(unit_id) WHERE released_at IS NULL;
@@ -546,6 +547,25 @@ class Database:
                 self._close_if_clear(c, u["incident_id"])
         return bool(released)
 
+    def fleet(self) -> list[dict]:
+        """Every vehicle out on a job: which stage of its cycle it is in and when it is back in service."""
+        from . import timing
+
+        rows = self._conn.execute(
+            """SELECT a.unit_id, a.incident_id, a.start_at, a.expected_release_at, a.timeline_json,
+                      u.callsign, u.resource_type, u.agency, u.station
+               FROM allocations a JOIN units u ON u.unit_id = a.unit_id
+               WHERE a.released_at IS NULL ORDER BY a.expected_release_at"""
+        ).fetchall()
+        scale, out = time_scale(), []
+        for r in rows:
+            stages = json.loads(r["timeline_json"]) if r["timeline_json"] else []
+            state = timing.current_stage(stages, datetime.fromisoformat(r["start_at"]), scale) if stages else \
+                {"stage": "committed", "detail": "", "stage_left_min": None, "back_in_service_min": None}
+            out.append({k: r[k] for k in ("unit_id", "callsign", "resource_type", "agency", "station", "incident_id",
+                                          "expected_release_at")} | state)
+        return out
+
     def ledger(self, limit: int = 200, incident_id: int | None = None) -> list[dict]:
         q, args = "SELECT * FROM inventory_ledger", []
         if incident_id:
@@ -608,14 +628,16 @@ class Database:
                     c.execute("INSERT INTO incident_log (incident_id, ts, kind, text) VALUES (?, ?, 'reassigned', ?)",
                               (old, _iso(now), f"{alloc.callsign} reassigned to {iid} (severity {incident.severity})."))
                     ledger(c, "reassigned", "unit", alloc.unit_id, alloc.resource_type, f"{alloc.callsign} from {old}")
-                minutes = durations.get(alloc.resource_type, 60)
-                release_at = _iso(now + timedelta(minutes=(minutes + alloc.eta_min) / scale))
+                # The whole vehicle cycle (timing.py); older callers without a timeline fall back to duration + ETA.
+                cycle = alloc.back_in_service_min or (durations.get(alloc.resource_type, 60) + alloc.eta_min)
+                release_at = _iso(now + timedelta(minutes=cycle / scale))
                 c.execute(
                     """
-                    INSERT INTO allocations (unit_id, response_id, incident_id, requested_by, start_at, expected_release_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO allocations (unit_id, response_id, incident_id, requested_by, start_at, expected_release_at,
+                                             timeline_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (alloc.unit_id, rid, iid, alloc.requested_by.value, _iso(now), release_at),
+                    (alloc.unit_id, rid, iid, alloc.requested_by.value, _iso(now), release_at, json.dumps(alloc.timeline)),
                 )
                 if not alloc.preempted_from:
                     ledger(c, "dispatched", "unit", alloc.unit_id, alloc.resource_type, alloc.callsign)

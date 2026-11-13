@@ -393,6 +393,8 @@ class UnitAllocation(BaseModel):
     preempted_from: int | None = None
     crew: list[CrewMember] = Field(default_factory=list)
     task: str = ""
+    timeline: list[dict] = Field(default_factory=list, description="en_route / on_scene / returning / cooldown, simulated minutes")
+    back_in_service_min: float | None = Field(default=None, description="Simulated minutes until it is available again")
 
 
 # --------------------------------------------------------------------------- #

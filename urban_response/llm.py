@@ -33,6 +33,9 @@ _clients: dict[str, AsyncOpenAI] = {}
 GUIDED_JSON = os.getenv("UR_GUIDED_JSON", "1") == "1"
 # Most hybrid-reasoning models accept this via the chat template; disable if your server errors.
 DISABLE_THINKING = os.getenv("UR_DISABLE_THINKING", "1") == "1"
+# Ollama ignores chat_template_kwargs; its OpenAI endpoint takes reasoning_effort instead
+# ("none" turns thinking off). Leave unset for vLLM / NIM / SGLang.
+REASONING_EFFORT = os.getenv("UR_REASONING_EFFORT", "")
 
 
 class LLMError(RuntimeError):
@@ -78,6 +81,8 @@ async def _complete_openai(ep: ModelEndpoint, system: str, messages: list[dict],
         }
     if DISABLE_THINKING:
         kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+    if REASONING_EFFORT:
+        kwargs["reasoning_effort"] = REASONING_EFFORT
     resp = await _client(ep).chat.completions.create(**kwargs)
     return resp.choices[0].message.content or ""
 

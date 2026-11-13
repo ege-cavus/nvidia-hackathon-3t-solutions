@@ -8,10 +8,14 @@ ENV_FILE="deploy/dgx/.env"
 set -a; source "$ENV_FILE"; set +a
 
 if [[ "${LLM_MODE:-mock}" == "live" ]]; then
-  for url in "$QWEN_BASE_URL" "$NEMOTRON_BASE_URL"; do
-    curl -fsS --max-time 5 "$url/models" >/dev/null \
-      || { echo "Model server not answering at $url/models"; exit 1; }
-  done
+  check() {  # base_url model
+    local body
+    body=$(curl -fsS --max-time 5 "$1/models") || { echo "Model server not answering at $1/models (docker compose -f deploy/dgx/models.compose.yml ps)"; exit 1; }
+    grep -q "\"id\":\"$2\"" <<<"${body// /}" || { echo "$1 is up but does not serve '$2': $body"; exit 1; }
+  }
+  check "$QWEN_BASE_URL" "$QWEN_MODEL"
+  check "$NEMOTRON_BASE_URL" "$NEMOTRON_MODEL"
+  [[ -n "${CR_BASE_URL:-}" ]] && check "$CR_BASE_URL" "${CR_MODEL:-$NEMOTRON_MODEL}"
 fi
 if [[ "${HF_HUB_OFFLINE:-0}" == "1" ]]; then
   HF_HUB_OFFLINE=1 uv run python -c "from huggingface_hub import snapshot_download as s; import os; m=os.getenv('UR_MINILM_MODEL','sentence-transformers/all-MiniLM-L6-v2'); os.path.isdir(m) or s(m, local_files_only=True)" 2>/dev/null \
