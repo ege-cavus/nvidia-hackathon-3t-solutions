@@ -30,27 +30,43 @@ def synthetic_graph():
     return graph
 
 
-def load_sheffield_graph(download=False, cache="assets/sheffield.graphml"):
+def load_sheffield_graph(download=False, cache="assets/sheffield.graphml", strict=False):
     """Offline by default. Explicit OSM download has a bounded HTTP timeout."""
     if not download and not Path(cache).is_file():
+        if strict:
+            raise FileNotFoundError("No cached OSM graph; run with --download-osm")
         return synthetic_graph(), "synthetic_offline"
     try:
         import osmnx as ox
-        if Path(cache).is_file():
+        cached = Path(cache).is_file()
+        if cached:
             graph = ox.load_graphml(cache)
         else:
-            ox.settings.requests_timeout = 8
-            graph = ox.graph_from_place("Sheffield, South Yorkshire, England, UK", network_type="drive")
-            Path(cache).parent.mkdir(parents=True, exist_ok=True)
-            ox.save_graphml(graph, cache)
-        graph = ox.routing.add_edge_speeds(graph)
-        graph = ox.routing.add_edge_travel_times(graph)
+            ox.settings.requests_timeout = 60
+            # Bounded study area covers all six bases and five hero cameras.
+            # Avoid downloading the much larger Sheffield administrative district.
+            graph = ox.graph_from_bbox((-1.54, 53.36, -1.39, 53.43), network_type="drive")
+        needs_times = any("travel_time" not in data for _, _, data in graph.edges(data=True))
+        if needs_times:
+            graph = ox.routing.add_edge_speeds(graph)
+            graph = ox.routing.add_edge_travel_times(graph)
+        graph.graph["source"] = "osmnx"
+        graph.graph["attribution"] = "OpenStreetMap contributors, ODbL"
+        Path(cache).parent.mkdir(parents=True, exist_ok=True)
+        if not cached or needs_times:
+            temporary = Path(cache).with_suffix(".tmp.graphml")
+            ox.save_graphml(graph, temporary)
+            temporary.replace(cache)
         return graph, "osmnx"
     except (ImportError, OSError, ValueError, nx.NetworkXException) as error:
+        if strict:
+            raise RuntimeError("Could not load a real OSM graph") from error
         graph = synthetic_graph()
         graph.graph["fallback_reason"] = str(error)
         return graph, "synthetic_fallback"
     except Exception as error:
+        if strict:
+            raise RuntimeError("OSM download/cache processing failed") from error
         # OSMnx HTTP exceptions differ between requests versions; remain usable offline.
         graph = synthetic_graph()
         graph.graph["fallback_reason"] = type(error).__name__
@@ -70,8 +86,90 @@ class SheffieldSim:
                                  "fallback_reason": self.graph.graph.get("fallback_reason")}
 
     def _nearest(self, point):
-        return min(self.graph.nodes, key=lambda n: (self.graph.nodes[n]["x"]-point["lon"])**2
-                   + (self.graph.nodes[n]["y"]-point["lat"])**2)
+        # Great-circle distance avoids comparing longitude/latitude degrees as metres.
+        for mapping in getattr(self, "location_mappings", {}).values():
+            if (point["lat"], point["lon"]) == (mapping["lat"], mapping["lon"]):
+                return mapping["access_node"]
+        return min(self.graph.nodes, key=lambda n: _distance(point,
+            {"lat": self.graph.nodes[n]["y"], "lon": self.graph.nodes[n]["x"]}))
+
+    def build_location_mappings(self):
+        """Map team-supplied coordinates to streets in a metre-based projection.
+
+        Nearest street is an inferred association, not verified camera direction
+        or a station driveway. Distances above 150m require manual review.
+        Access nodes remain fixed when a street closes: do not snap past a closure.
+        """
+        import osmnx as ox
+        from pyproj import Transformer
+        projected = ox.project_graph(self.graph)
+        transform = Transformer.from_crs("EPSG:4326", projected.graph["crs"], always_xy=True)
+        mappings = {}
+        for key, point in {**EMERGENCY_HUBS, **HERO_CAMERAS}.items():
+            x, y = transform.transform(point["lon"], point["lat"])
+            edge, edge_distance = ox.distance.nearest_edges(projected, x, y, return_dist=True)
+            node, node_distance = ox.distance.nearest_nodes(projected, x, y, return_dist=True)
+            edge = tuple(int(value) if hasattr(value, "item") else value for value in edge)
+            node = int(node) if hasattr(node, "item") else node
+            data = self.graph.edges[edge]
+            mappings[key] = {"name": point["name"], "lat": point["lat"], "lon": point["lon"],
+                "access_node": node, "edge": edge, "road_name": data.get("name", "unnamed"),
+                "osmid": data.get("osmid"), "edge_distance_m": round(float(edge_distance), 2),
+                "node_distance_m": round(float(node_distance), 2),
+                "needs_review": max(float(edge_distance), float(node_distance)) > 150,
+                "association": "nearest_street_unverified"}
+        self.location_mappings = mappings
+        return mappings
+
+    def camera_road_edges(self, cam_id):
+        """Selected directed street plus its actual reverse, excluding other roads."""
+        mappings = getattr(self, "location_mappings", None) or self.build_location_mappings()
+        u, v, key = mappings[cam_id]["edge"]
+        selected = self.graph[u][v][key]
+        edges = [(u, v, key)]
+        for reverse_key, data in self.graph.get_edge_data(v, u, default={}).items():
+            if data.get("osmid") == selected.get("osmid") and data.get("geometry") is not None and selected.get("geometry") is not None:
+                if data["geometry"].equals(selected["geometry"]):
+                    edges.append((v, u, reverse_key))
+        return edges
+
+    def set_camera_road_closed(self, cam_id, closed=True):
+        """Manual road closure for experiments; inference alone must not call this.
+
+        Track ownership so clearing this camera does not clear another closure.
+        These affect newly planned routes; mid-trip replanning remains pending.
+        """
+        if cam_id not in HERO_CAMERAS:
+            raise ValueError("Unknown camera")
+        registry = self.state.setdefault("camera_road_closures", {})
+        owned = {tuple(e) for edges in registry.values() for e in edges}
+        current = {tuple(e) for e in self.state["blocked_edges"]}
+        preserved = self.state.setdefault("camera_closure_external_edges", list(current - owned))
+        external = (current - owned) | {tuple(e) for e in preserved}
+        if closed:
+            registry[cam_id] = self.camera_road_edges(cam_id)
+        else:
+            registry.pop(cam_id, None)
+        self.state["blocked_edges"] = sorted(external | {tuple(e) for edges in registry.values() for e in edges}, key=str)
+        return self.state["blocked_edges"]
+
+    def road_verification_report(self):
+        mappings = self.build_location_mappings()
+        routes = {}
+        for unit in self.state["resource_db"]:
+            routes[unit] = {}
+            for cam in HERO_CAMERAS:
+                try:
+                    plan = self.estimate_depletion_ticks(unit, cam, 5)
+                    routes[unit][cam] = {k: plan[k] for k in ("travel_to_scene_ticks", "return_to_base_ticks", "total_depletion_ticks_remaining")}
+                except nx.NetworkXNoPath:
+                    routes[unit][cam] = {"unreachable": True}
+        return {"routing": self.state["routing"], "attribution": self.graph.graph.get("attribution"),
+                "nodes": self.graph.number_of_nodes(), "edges": self.graph.number_of_edges(),
+                "locations": mappings, "round_trips": routes,
+                "limitations": ["Team coordinates and nearest-street associations require visual verification",
+                                "Inferred speeds are estimates; no live traffic",
+                                "Study-area boundary can truncate routes; expand if routes are unreachable"]}
 
     def _route(self, start, end):
         graph = self.graph.copy()
@@ -82,12 +180,17 @@ class SheffieldSim:
         path = nx.shortest_path(graph, a, b, weight="travel_time")
         seconds = 0.0
         coordinates = [[graph.nodes[n]["x"], graph.nodes[n]["y"]] for n in path]
+        route_edges = []
+        distance_m = 0.0
         cumulative_seconds = [0.0]
         for u, v in zip(path, path[1:]):
-            seconds += min(float(data["travel_time"]) for data in graph[u][v].values())
+            key, data = min(graph[u][v].items(), key=lambda item: float(item[1]["travel_time"]))
+            route_edges.append((u, v, key))
+            distance_m += float(data.get("length", 0))
+            seconds += float(data["travel_time"])
             cumulative_seconds.append(seconds)
         return {"ticks": max(1, math.ceil(seconds / 60)), "seconds": seconds,
-                "path": coordinates, "cumulative_seconds": cumulative_seconds, "destination": {"lat": end["lat"], "lon": end["lon"]}}
+                "edges": route_edges, "distance_m": distance_m, "path": coordinates, "cumulative_seconds": cumulative_seconds, "destination": {"lat": end["lat"], "lon": end["lon"]}}
 
     def estimate_depletion_ticks(self, unit_id, cam_id, severity):
         unit = self.state["resource_db"][unit_id]
@@ -298,8 +401,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticks", type=int, default=5)
     parser.add_argument("--download-osm", action="store_true")
+    parser.add_argument("--road-report", type=Path, help="Write real-OSM camera/station and round-trip verification JSON")
     args = parser.parse_args()
-    sim = SheffieldSim(seed=42, demo=True, download=args.download_osm)
+    if args.road_report:
+        graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
+        sim = SheffieldSim(graph=graph, seed=42, demo=True)
+        report = sim.road_verification_report()
+        args.road_report.parent.mkdir(parents=True, exist_ok=True)
+        args.road_report.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        print(f"Road report: {args.road_report} ({report['nodes']} nodes, {report['edges']} edges)")
+    else:
+        sim = SheffieldSim(seed=42, demo=True, download=args.download_osm)
     for _ in range(args.ticks):
         sim.tick()
-    print(json.dumps(sim.state, indent=2))
+    if not args.road_report:
+        print(json.dumps(sim.state, indent=2))
