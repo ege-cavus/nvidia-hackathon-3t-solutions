@@ -190,7 +190,7 @@ td.late { color: var(--bad); font-weight: 700; }
 .unmet ul { padding-left: 18px; font-size: 14px; }
 
 .agent-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.agent-card { border: 1px solid var(--rule); border-top: 3px solid var(--c); border-radius: var(--radius); padding: 10px 12px; font-size: 14px; display: grid; gap: 6px; align-content: start; }
+.agent-card { border: 1px solid var(--rule); border-radius: var(--radius); padding: 10px 12px; font-size: 14px; display: grid; gap: 6px; align-content: start; }
 .agent-card header { display: flex; align-items: center; gap: 8px; }
 .agent-card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mute); margin-top: 4px; }
 .agent-card ul { padding-left: 18px; color: var(--ink-2); }
