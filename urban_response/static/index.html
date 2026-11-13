@@ -186,6 +186,12 @@ table.data .num { text-align: right; }
 .conflict.hard { border-color: var(--bad); }
 .conflict.sev-high { border-color: var(--bad); } .conflict.sev-medium { border-color: var(--warn); }
 .raw summary { cursor: pointer; font-size: 12px; color: var(--mute); }
+.more { margin-top: 4px; }
+.more > summary { cursor: pointer; font-size: 13px; color: var(--mute); font-weight: 600; list-style-position: inside; }
+.more > summary:hover { color: var(--ink-2); }
+.more[open] { padding-bottom: 4px; }
+.more h4 { margin-top: 6px; }
+.score .more { flex-basis: 100%; }
 .raw pre { font-family: var(--mono); font-size: 12px; background: var(--ground); border: 1px solid var(--rule); border-radius: var(--radius); padding: 8px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
 .pipeline { list-style: none; padding: 0; display: grid; gap: 4px; }
 .pipeline li { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; font-size: 14px; color: var(--mute); }
@@ -324,7 +330,7 @@ body.brief { background: #15181b; color: #ece9e2; }
     <span class="clock" id="clock">--:--:--</span>
     <span class="pill" id="conn" role="status">connecting…</span>
     <span class="pill" id="modeLabel" title="Change in settings"></span>
-    <span class="pill sim" title="Simulated decisions for a hackathon demo">Simulation · not for operational use</span>
+    <span class="pill sim" title="Simulated decisions for a hackathon demo">Simulation – not for operational use</span>
     <div class="actions">
       <button class="btn primary" id="btnDemo" type="button">▶ Run demo</button>
       <button class="btn" id="btnBurst" type="button" title="Several near-simultaneous calls about one incident">Burst calls</button>
@@ -432,7 +438,7 @@ body.brief { background: #15181b; color: #ece9e2; }
     <label>Reset the city: type RESET to clear every call and return all units<input id="resetText" autocomplete="off"></label>
     <div class="row-end"><button class="btn danger" id="resetBtn" type="button" disabled>Reset city</button></div>
     <p class="error" id="setError" role="alert"></p>
-    <p class="hint">Keys: <kbd>N</kbd> new call · <kbd>R</kbd> resources · <kbd>J</kbd>/<kbd>K</kbd> next/previous call · <kbd>Esc</kbd> close</p>
+    <p class="hint">Keys: <kbd>N</kbd> new call – <kbd>R</kbd> resources – <kbd>J</kbd>/<kbd>K</kbd> next/previous call – <kbd>Esc</kbd> close</p>
   </div>
   <div class="row-end"><button class="btn" type="button" data-close>Close</button></div>
 </dialog>
@@ -536,6 +542,19 @@ const agentChip = (k) => h("span", { class: "agent-chip", style: `--c:${css(AGEN
 const icon = (a, lead) => h("span", { class: "ag-icon" + (lead ? " lead" : ""), style: `color:${agencyColor(a)}`, title: (AGENCY[a]?.label || a) + (lead ? " (lead)" : "") },
   sv("svg", { viewBox: "0 0 16 16", "aria-hidden": "true" }, sv("path", { d: ICON[a] || ICON.shared, fill: "currentColor" })));
 const raw = (obj) => h("details", { class: "raw" }, h("summary", {}, "Raw"), h("pre", {}, JSON.stringify(obj, null, 2)));
+const more = (label, ...kids) => h("details", { class: "more" }, h("summary", {}, label), ...kids);
+
+// Short names for tight spaces (feed lines, diagram labels, chips); full names stay in tables.
+const SHORT_UNIT = { fire_engine: "engine", emergency_ambulance: "ambulance", rapid_response_vehicle: "RRV", critical_care_car: "critical care car",
+  armed_response_vehicle: "ARV", roads_policing_unit: "roads unit", aerial_ladder_platform: "aerial ladder", mobile_command_unit: "command unit",
+  hart_team: "HART", water_rescue_unit: "water rescue", public_order_van: "public order van" };
+const SHORT_ACTION = { preempt: "reassign", substitute: "substitute", mutual_aid: "mutual aid", relax_eta: "later arrival", accept_partial: "partial" };
+const unitText = (t) => SHORT_UNIT[t] || nice(t);
+const asks = (reqs, max = 3) => {
+  const list = (reqs || []).map((r) => `${r.quantity} ${unitText(r.resource_type)}`);
+  return list.slice(0, max).join(", ") + (list.length > max ? ` +${list.length - max}` : "");
+};
+const shortPlace = (addr) => String(addr || "unknown place").split(",")[0];
 
 // ---- state ----------------------------------------------------------------------------------- //
 const S = { config: {}, mode: "mock", state: null, lastSeen: 0, online: false, scenarios: [], bursts: {} };
@@ -580,11 +599,11 @@ function renderConn() {
   if (S.online) { el.className = "pill ok"; el.textContent = "backend online"; }
   else {
     const ago = S.lastSeen ? Math.round((Date.now() - S.lastSeen) / 1000) : null;
-    el.className = "pill bad"; el.textContent = ago == null ? "backend offline" : `backend offline · last seen ${ago}s ago`;
+    el.className = "pill bad"; el.textContent = ago == null ? "backend offline" : `backend offline – last seen ${ago}s ago`;
   }
   $("liveDot").classList.toggle("on", S.online);
   const ts = S.state && S.state.time_scale;
-  $("footNote").textContent = `${API_BASE ? "Via Vercel proxy to the DGX Spark" : "Served by the SURU API"}${ts && ts !== 1 ? ` · unit return time ×${ts}` : ""}`;
+  $("footNote").textContent = `${API_BASE ? "Via Vercel proxy to the DGX Spark" : "Served by the SURU API"}${ts && ts !== 1 ? ` – unit return time ×${ts}` : ""}`;
 }
 
 // ---- pipeline jobs and their live event streams ---------------------------------------------- //
@@ -622,64 +641,66 @@ function apply(job, ev) {
   const ts = new Date(base + (ev.t || 0) * 1000);
   const add = (agent, type, tone, text, detail, by) => FEED.push({ id: FEED.length + 1, ts, incident_id: job.incident_id, agent, type, tone, text, detail, by, fresh: !job.replay });
   switch (name) {
+    // Feed lines carry only the vital fact; the full sentence goes in the entry's expandable detail.
     case "ingested": {
       const dd = d.dedup || {}, i = d.incident || {};
       job.stage = "Duplicate check";
-      add("Qwen", "CALL", "", `New 999 call: ${catText(i.category)}, ${i.location?.address || "unknown address"} (severity ${i.severity})`,
-        dd.verdict && dd.verdict !== "new" ? `${cap(dd.verdict)} to ${dd.match_incident_id}: ${dd.reason}` : dd.reason, dd.executed_by);
+      add("Qwen", "CALL", "", `${catText(i.category)} – ${shortPlace(i.location?.address)} – sev ${i.severity}`,
+        [i.description, dd.verdict && dd.verdict !== "new" ? `${cap(dd.verdict)} to ${dd.match_incident_id}: ${dd.reason}` : null].filter(Boolean).join(" "), dd.executed_by);
       break;
     }
     case "merged":
-      job.stage = `Merged into ${d.into}`; add("Qwen", "MERGED", "warn", `Duplicate report merged into ${d.into}`, d.reason, "rules");
+      job.stage = `Merged into ${d.into}`; add("Qwen", "MERGED", "warn", `Duplicate → ${d.into}`, d.reason, "rules");
       if (!job.replay && UI.selected === job.incident_id && $("followLive").checked) select(d.into, false);  // follow the real incident, not the duplicate
       break;
     case "routing": job.stage = "Qwen routing"; break;
-    case "routed":
+    case "routed": {
       job.stage = `Agencies 0/${(d.agencies || []).length}`; job.routing = d;
-      add("Qwen", "ROUTED", "", `Routed to ${(d.agencies || []).map((a) => (AGENCY[a]?.label || a) + (a === d.lead_agency ? " (lead)" : "")).join(", ")}`, d.rationale, d.executed_by);
+      const others = (d.agencies || []).filter((a) => a !== d.lead_agency).map((a) => AGENCY[a]?.label || a);
+      add("Qwen", "ROUTED", "", `${AGENCY[d.lead_agency]?.label || d.lead_agency} leads${others.length ? " – " + others.join(", ") : ""}`, d.rationale, d.executed_by);
       break;
+    }
     case "agent_start": break;
     case "agent_done": {
       job.agents = (job.agents || []).concat(d);
       job.stage = `Agencies ${job.agents.length}/${(job.routing?.agencies || []).length || job.agents.length}`;
-      const reqs = (d.resource_requests || []).map((r) => `${r.quantity} ${nice(r.resource_type)}`);
       const sc = d.scene_constraints || {};
-      add(d.agent_id, "PROPOSAL", "", `${AGENTS[d.agent_id]?.label || d.agent_id} asks for ${reqs.join(", ") || "nothing"}${sc.cordon_inner_radius_m ? `; inner cordon ${sc.cordon_inner_radius_m} m` : ""}`,
-        d.mission_details?.summary, d.executed_by);
+      add(d.agent_id, "PROPOSAL", "", asks(d.resource_requests) || "No units requested",
+        [d.mission_details?.summary, sc.cordon_inner_radius_m ? `Inner cordon ${sc.cordon_inner_radius_m} m.` : null].filter(Boolean).join(" "), d.executed_by);
       break;
     }
     case "conflicts_detected": {
       job.stage = "Checking conflicts"; job.conflicts = d;
       const hard = d.hard || [], soft = d.soft_rules || [];
       add("Rules", "CONFLICTS", hard.length ? "bad" : soft.length ? "warn" : "ok",
-        hard.length || soft.length ? `${hard.length} hard, ${soft.length} soft conflicts${hard.length ? ": " + hard.slice(0, 2).map((x) => `${HARD_KIND[x.kind] || x.kind} (${nice(x.resource_type)})`).join("; ") : ""}` : "No conflicts between the agencies",
-        null, "rules");
+        hard.length || soft.length ? `${hard.length} hard – ${soft.length} soft` : "None",
+        [...hard.map((x) => `${HARD_KIND[x.kind] || x.kind}: ${unitText(x.resource_type)}.`), ...soft.map((s) => `${SOFT[s.code] || nice(s.code)}.`)].join(" "), "rules");
       break;
     }
     case "cr_start": job.stage = "CR deciding"; break;
     case "cr_decided": {
       job.stage = "CR decided"; job.cr = d;
       const res = d.resolutions || [];
+      const counts = {};
+      for (const r of res) counts[r.action] = (counts[r.action] || 0) + 1;
       add("CR", "DECISION", res.some((r) => r.executed_by === "fallback") ? "warn" : "",
-        res.length ? res.map((r) => `${ACTION[r.action] || nice(r.action)}: ${nice(r.resource_type)}${r.substitute_type ? " → " + nice(r.substitute_type) : ""}`).join("; ")
-          : `Manifest of ${sum(d.manifest || [], (m) => m.quantity)} units, no conflicts to settle`,
-        d.rationale, d.executed_by);
+        res.length ? Object.entries(counts).map(([a, n]) => `${SHORT_ACTION[a] || nice(a)}${n > 1 ? " ×" + n : ""}`).join(" – ") : `${sum(d.manifest || [], (m) => m.quantity)} units, nothing to settle`,
+        [d.rationale, ...res.map((r) => `${ACTION[r.action] || nice(r.action)}: ${unitText(r.resource_type)}${r.substitute_type ? " → " + unitText(r.substitute_type) : ""}.`)].filter(Boolean).join(" "), d.executed_by);
       break;
     }
     case "committed": {
       job.stage = "Units dispatched"; RESP[d.response_id] = d; job.response_id = d.response_id;
-      const crew = sum(d.allocations || [], (a) => (a.crew || []).length);
-      add("CR", "DISPATCHED", (d.unmet || []).length ? "warn" : "ok",
-        `${(d.allocations || []).length} vehicles and ${crew} crew sent${(d.unmet || []).length ? `; ${sum(d.unmet, (u) => u.quantity)} units not covered` : ""}`, d.cr_rationale, d.cr_executed_by);
+      const crew = sum(d.allocations || [], (a) => (a.crew || []).length), short = sum(d.unmet || [], (u) => u.quantity);
+      add("CR", "DISPATCHED", short ? "warn" : "ok", `${(d.allocations || []).length} vehicles – ${crew} crew${short ? ` – ${short} short` : ""}`, d.cr_rationale, d.cr_executed_by);
       break;
     }
     case "evaluating": job.stage = "Qwen scoring"; break;
     case "evaluated":
       job.stage = `Scored ${d.score}/100`; job.evaluation = d;
-      add("Qwen", "SCORED", (VERDICT[d.verdict] || ["", ""])[0], `${d.score}/100 (grade ${d.grade}), ${(VERDICT[d.verdict] || ["", nice(d.verdict)])[1].toLowerCase()}: ${d.headline}`, (d.findings || []).join(" "), d.executed_by);
+      add("Qwen", "SCORED", (VERDICT[d.verdict] || ["", ""])[0], `${d.score} – ${d.grade} – ${(VERDICT[d.verdict] || ["", nice(d.verdict)])[1]}`, [d.headline, ...(d.findings || [])].join(" "), d.executed_by);
       break;
     case "completed": job.stage = "Units assigned"; if (d.response) { RESP[d.response.response_id] = d.response; } break;
-    case "error": job.stage = "Error"; job.error = d.message; add("Rules", "ERROR", "bad", `Pipeline failed: ${d.message}`, null, "rules"); break;
+    case "error": job.stage = "Error"; job.error = d.message; add("Rules", "ERROR", "bad", "Pipeline failed", d.message, "rules"); break;
   }
   job.lastEventAt = Date.now();
   if (!job.replay) { renderAll(); if (name === "committed" || name === "completed") refreshState(); }
@@ -720,7 +741,7 @@ function renderMetrics() {
     // Neutral on purpose: in rules-only mode the rules settle every conflict, so a CR share would read as a failure.
     h("div", { class: "metric", title: "Hard conflicts (vehicles or crews short) across scored calls, and who settled them: CR with a valid choice, the rule policy, or a fallback after a failed model call." },
       h("span", { class: "m-label" }, "Hard conflicts settled"), h("span", { class: "m-value" }, m.hard || "—"),
-      h("span", { class: "m-note" }, m.hard ? `CR ${m.byCr} · rules ${Math.max(0, m.hard - m.byCr - m.fallbacks)} · fallback ${m.fallbacks} · ${m.reassigned} reassigned` : "None yet")));
+      h("span", { class: "m-note" }, m.hard ? `CR ${m.byCr} – rules ${Math.max(0, m.hard - m.byCr - m.fallbacks)} – fallback ${m.fallbacks} – ${m.reassigned} reassigned` : "None yet")));
 }
 
 // ---- needs-action strip ---------------------------------------------------------------------- //
@@ -762,9 +783,9 @@ function card(inc) {
   const extra = inc.report_count > 1 ? h("span", { class: "merged-note" }, `${inc.report_count} reports merged`) : null;
   return h("button", { type: "button", class: "card" + (UI.selected === inc.incident_id ? " selected" : ""), "aria-pressed": UI.selected === inc.incident_id, onclick: () => select(inc.incident_id) },
     h("span", { class: "card-top" }, h("span", { class: "sev-badge", style: `background:${SEV_COLOR[inc.severity]}` }, inc.severity), h("span", { class: "card-cat" }, catText(inc.category)), h("span", { class: "card-id" }, inc.incident_id)),
-    h("span", { class: "card-meta" }, inc.address || "", " · ", live ? h("span", { class: "timer" + (mins >= 15 ? " red" : mins >= 7 ? " amber" : "") }, `${Math.floor(mins)} min since call`)
-      : `${inc.units_committed || 0} units out${inc.expected_release_at && inc.status !== "closed" ? ` · back ~${hhmm(inc.expected_release_at)}` : ""}`),
-    live ? h("span", { class: "stage" }, job ? `${job.stage} · ${Math.round((Date.now() - job.startedAt) / 1000)}s` : "Waiting for the pipeline") : null,
+    h("span", { class: "card-meta" }, inc.address || "", " – ", live ? h("span", { class: "timer" + (mins >= 15 ? " red" : mins >= 7 ? " amber" : "") }, `${Math.floor(mins)} min since call`)
+      : `${inc.units_committed || 0} units out${inc.expected_release_at && inc.status !== "closed" ? ` – back ~${hhmm(inc.expected_release_at)}` : ""}`),
+    live ? h("span", { class: "stage" }, job ? `${job.stage} – ${Math.round((Date.now() - job.startedAt) / 1000)}s` : "Waiting for the pipeline") : null,
     h("span", { class: "card-foot" }, h("span", { class: "status " + tone }, text), extra,
       routing ? h("span", { class: "icons" }, (routing.agencies || []).map((a) => icon(a, a === routing.lead_agency))) : null));
 }
@@ -774,7 +795,7 @@ function renderList() {
   const order = (a, b) => b.severity - a.severity || new Date(b.received_at) - new Date(a.received_at);
   const active = all.filter((i) => i.status !== "merged" && i.status !== "closed").sort(order);
   const merged = all.filter((i) => i.status === "merged"), closed = all.filter((i) => i.status === "closed").sort(order);
-  $("callCount").textContent = active.length ? `· ${active.length} active` : "";
+  $("callCount").textContent = active.length ? `– ${active.length} active` : "";
   $("calls").replaceChildren(...(active.length ? active.map(card)
     : [h("p", { class: "empty" }, incidents().length ? "No active calls match this filter." : "No calls yet. Press ▶ Run demo or + New call.")]));
   $("mergedCount").textContent = `(${merged.length})`; $("merged").replaceChildren(...merged.map(card));
@@ -872,7 +893,7 @@ function renderMap() {
     const color = merged ? null : tone === "live" ? "#ffffff" : tone === "bad" ? css("--bad") : tone === "warn" ? css("--warn") : css("--ok");
     const el = merged ? h("button", { type: "button", class: "mk-merged", title: `${inc.incident_id}: duplicate report merged into ${inc.duplicate_of}`, onclick: () => select(inc.duplicate_of) })
       : h("button", { type: "button", class: "mk-inc" + (tone === "live" ? " live" : "") + (UI.selected === inc.incident_id ? " selected" : ""), style: `background:${color}`,
-          title: `${inc.incident_id} · ${catText(inc.category)} · severity ${inc.severity} · ${statusOf(inc)[1]}`, onclick: () => select(inc.incident_id) }, inc.severity);
+          title: `${inc.incident_id} – ${catText(inc.category)} – severity ${inc.severity} – ${statusOf(inc)[1]}`, onclick: () => select(inc.incident_id) }, inc.severity);
     if (!m) { m = new maplibregl.Marker({ element: h("div"), anchor: "center" }).setLngLat([inc.lon, inc.lat]).addTo(map); incMarkers.set(inc.incident_id, m); }
     m.getElement().replaceChildren(el);
     m.getElement().style.zIndex = UI.selected === inc.incident_id ? 3 : merged ? 1 : 2;
@@ -900,7 +921,7 @@ function renderSelectionLayers() {
     }
     for (const s of byStation.values()) {
       const label = h("div", { class: "line-label", style: `--c:${agencyColor(s.agency)}` },
-        s.units.length > 2 ? `${s.units.length} units · ${Math.round(Math.min(...s.units.map((u) => u.eta_min)))}′` : s.units.map((u) => `${u.callsign} ${Math.round(u.eta_min)}′`).join(" · "));
+        s.units.length > 2 ? `${s.units.length} units – ${Math.round(Math.min(...s.units.map((u) => u.eta_min)))}′` : s.units.map((u) => `${u.callsign} ${Math.round(u.eta_min)}′`).join(" – "));
       dynMarkers.push(new maplibregl.Marker({ element: label }).setLngLat([(s.from[0] * 2 + inc.lon) / 3, (s.from[1] * 2 + inc.lat) / 3]).addTo(map));
     }
     for (const a of r?.agent_responses || job?.agents || []) {
@@ -943,13 +964,13 @@ function netModel(id) {
   for (const a of ["A1", "A2", "A3"]) {
     const agency = AGENT_AGENCY[a], on = routed.has(agency), lead = routing?.lead_agency === agency;
     edges.push({ from: "Qwen", to: a, cls: on ? "routed" + (lead ? " lead" : "") : "idle", live: on && fresh("routed"),
-      title: on ? `Qwen routed the call to ${AGENTS[a].label}${lead ? " as lead" : ""}${routing.rationale ? `: ${routing.rationale}` : ""}` : `${AGENTS[a].label} was not routed` });
+      title: on ? `Qwen → ${AGENTS[a].label}${lead ? " (lead)" : ""}` : `${AGENTS[a].label}: not routed` });
     const p = agents.find((x) => x.agent_id === a || x.agency === agency);
     if (!on && !p) continue;
-    const reqs = (p?.resource_requests || []).map((q) => `${q.quantity} ${nice(q.resource_type)}`);
+    const reqs = (p?.resource_requests || []).map((q) => `${q.quantity} ${unitText(q.resource_type)}`);
     edges.push({ from: a, to: "CR", side: -1, cls: p ? "proposal" : "waiting", color: agencyColor(agency), live: fresh("agent_done", a),
       label: reqs.length ? (reqs[0].length > 15 ? reqs[0].slice(0, 14) + "…" : reqs[0]) + (reqs.length > 1 ? ` +${reqs.length - 1}` : "") : "",
-      title: p ? `${AGENTS[a].label} → CR: asks for ${reqs.join(", ")}${p.executed_by ? ` (${p.executed_by})` : ""}` : `${AGENTS[a].label} is working on its proposal` });
+      title: p ? `${AGENTS[a].label} → CR: ${asks(p.resource_requests, 6)}` : `${AGENTS[a].label}: proposal pending` });
     if (!r || !p) continue;
     const sent = (r.allocations || []).filter((x) => x.agency === agency).length;
     const wanted = sum((r.manifest || []).filter((x) => x.for_agency === agency), (x) => x.quantity);
@@ -957,7 +978,7 @@ function netModel(id) {
     const conflicts = hard.filter((x) => (x.agencies || []).includes(agency));
     const tone = gaps.length ? (r.evaluation?.verdict === "follow_up_required" ? "bad" : "warn") : conflicts.length ? "warn" : "ok";
     edges.push({ from: "CR", to: a, side: 1, cls: tone, live: fresh("committed"), label: `sent ${sent}/${wanted || sent}`,
-      title: `CR → ${AGENTS[a].label}: ${sent} of ${wanted} units sent${gaps.length ? `; not covered: ${gaps.map((g) => `${g.quantity} ${nice(g.resource_type)}`).join(", ")}` : ""}${conflicts.length ? `; settled ${conflicts.length} conflict(s): ${resolutions.filter((x) => conflicts.some((c) => c.resource_type === x.resource_type)).map((x) => ACTION[x.action] || x.action).join(", ")}` : ""}` });
+      title: `CR → ${AGENTS[a].label}: sent ${sent}/${wanted}${gaps.length ? ` – short ${gaps.map((g) => `${g.quantity} ${unitText(g.resource_type)}`).join(", ")}` : ""}${conflicts.length ? ` – ${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""} settled` : ""}` });
   }
   // Agency-to-agency soft conflicts become direct links between the agents involved.
   const pairs = new Map();
@@ -973,11 +994,11 @@ function netModel(id) {
     const [x, y] = key.split("-");
     const worst = list.some((s) => s.severity === "high") ? "bad" : list.some((s) => s.severity === "medium") ? "warn" : "idle";
     edges.push({ from: x, to: y, cls: "soft " + worst, live: fresh("conflicts_detected"),
-      title: list.map((s) => `${SOFT[s.code] || nice(s.code)} → ${s.suggested_resolution || "CR to resolve"}`).join(" | ") });
+      title: list.map((s) => SOFT[s.code] || nice(s.code)).join(" – ") });
   }
   const preempts = resolutions.filter((x) => x.action === "preempt").length;
-  const qwenSub = job && !job.done && !r ? job.stage : r?.evaluation ? `score ${r.evaluation.score} · ${r.evaluation.grade}` : routing ? "routed" : "";
-  const crSub = [hard.length && `${hard.length} conflicts`, preempts && `${preempts} reassigned`].filter(Boolean).join(" · ") || (r ? "dispatched" : job?.cr ? "decided" : "");
+  const qwenSub = job && !job.done && !r ? job.stage : r?.evaluation ? `score ${r.evaluation.score} – ${r.evaluation.grade}` : routing ? "routed" : "";
+  const crSub = [hard.length && `${hard.length} conflicts`, preempts && `${preempts} reassigned`].filter(Boolean).join(" – ") || (r ? "dispatched" : job?.cr ? "decided" : "");
   const by = (k) => (k === "CR" ? r?.cr_executed_by || job?.cr?.executed_by : k === "Qwen" ? routing?.executed_by : agents.find((x) => x.agent_id === k)?.executed_by);
   return { inc, edges, routed, routing, qwenSub, crSub, by, r };
 }
@@ -1036,7 +1057,7 @@ function renderNet() {
       sv("rect", { width: hw * 2, height: NH * 2, rx: 5, fill, stroke: fb ? css("--warn") : "none", "stroke-width": fb ? 3 : 0 }),
       sv("text", { x: hw, y: sub ? 13 : 19, "text-anchor": "middle", fill: ink, class: "net-name" }, AGENTS[k].label),
       sub ? sv("text", { x: hw, y: 25, "text-anchor": "middle", fill: ink, class: "net-sub" }, fb ? "fallback rules" : sub) : null,
-      sv("title", {}, `${AGENTS[k].label}${m.by(k) ? ` · executed by ${m.by(k)}` : ""}`));
+      sv("title", {}, `${AGENTS[k].label}${m.by(k) ? ` – executed by ${m.by(k)}` : ""}`));
   };
   svg.replaceChildren(defs, ...edges,
     node("Qwen", css("--qwen"), "#0a1a22", m.qwenSub),
@@ -1088,7 +1109,7 @@ function renderDrawer() {
   const scroll = drawer.querySelector(".d-body")?.scrollTop || 0;
   drawer.replaceChildren(
     h("div", { class: "d-head" },
-      h("h2", {}, h("span", { class: "mono" }, inc.incident_id), ` · ${catText(inc.category)} · `, h("span", { style: `color:${SEV_COLOR[inc.severity]}` }, `severity ${inc.severity}`), inc.address ? ` · ${inc.address}` : ""),
+      h("h2", {}, h("span", { class: "mono" }, inc.incident_id), ` – ${catText(inc.category)} – `, h("span", { style: `color:${SEV_COLOR[inc.severity]}` }, `severity ${inc.severity}`), inc.address ? ` – ${inc.address}` : ""),
       h("span", { class: "status " + tone }, text),
       h("div", { class: "d-actions" },
         h("a", { class: "btn small", href: `${location.pathname}?brief=${encodeURIComponent(inc.incident_id)}`, target: "_blank", rel: "noopener" }, "Phone brief ↗"),
@@ -1133,10 +1154,13 @@ const TAB = {
     const dirs = {};
     for (const d of r.directives || []) (dirs[d.agency] = dirs[d.agency] || []).push(d);
     const pri = (p) => css(p === "immediate" ? "--bad" : p === "high" ? "--warn" : "--rules");
+    const order = (who, d) => h("div", { class: "order" }, h("i", { style: `background:${pri(d.priority)}`, title: d.priority }), who === "all" ? h("b", {}, "All") : agencyChip(who), h("span", {}, d.action));
+    const orders = Object.entries(dirs).flatMap(([who, list]) => list.map((d) => [who, d]));
+    const urgent = orders.filter(([, d]) => d.priority === "immediate"), rest = orders.filter(([, d]) => d.priority !== "immediate");
     return h("div", {},
-      ev ? h("div", { class: "sec" }, h("p", { class: "eval-head" }, ev.headline), h("p", { class: "dek" }, ev.dek),
-        h("div", { class: "score" }, h("span", { class: "grade" }, `${ev.score}/100 · ${ev.grade}`), h("span", { class: "status " + (VERDICT[ev.verdict] || ["ok"])[0] }, (VERDICT[ev.verdict] || ["", nice(ev.verdict)])[1]), byBadge(ev.executed_by)),
-        (ev.findings || []).length ? h("ul", { class: "plain small", style: "margin-top:6px" }, ev.findings.map((f) => h("li", {}, f))) : null) : pipelineView(job),
+      ev ? h("div", { class: "sec" }, h("p", { class: "eval-head" }, ev.headline),
+        h("div", { class: "score" }, h("span", { class: "grade" }, `${ev.score}/100 – ${ev.grade}`), h("span", { class: "status " + (VERDICT[ev.verdict] || ["ok"])[0] }, (VERDICT[ev.verdict] || ["", nice(ev.verdict)])[1]), byBadge(ev.executed_by),
+          (ev.findings || []).length ? more(`Why this score (${ev.findings.length})`, h("ul", { class: "plain small" }, ev.findings.map((f) => h("li", {}, f)))) : null)) : pipelineView(job),
       h("div", { class: "two" },
         h("div", { class: "sec" }, h("h3", {}, `What we sent (${units.length} vehicles, ${sum(units, (u) => (u.crew || []).length)} crew)`),
           h("div", { class: "table-wrap" }, h("table", { class: "data" },
@@ -1145,17 +1169,22 @@ const TAB = {
               h("td", { class: "mono" }, u.callsign), h("td", {}, agencyChip(u.agency), " ", nice(u.resource_type), u.preempted_from ? h("div", { class: "small", style: "color:var(--warn)" }, `reassigned from ${u.preempted_from}`) : null),
               h("td", {}, u.station), h("td", { class: "num" }, `${Math.round(u.eta_min)} min`), h("td", { class: "num", title: (u.crew || []).map((c) => nice(c.speciality)).join(", ") }, (u.crew || []).length),
               h("td", {}, inc.status !== "closed" ? h("button", { class: "btn small", type: "button", onclick: async (e) => { e.currentTarget.disabled = true; await post(`/units/${encodeURIComponent(u.unit_id)}/release`).catch(() => {}); refreshState(); } }, "Release") : null)))))),
-          (r.unmet || []).length ? h("div", { class: "gap" }, h("h3", {}, "Gaps"), h("ul", {}, r.unmet.map((g) => h("li", {}, h("b", {}, `${g.quantity} ${nice(g.resource_type)}`), ` for ${AGENCY[g.requested_by]?.label || g.requested_by}: ${g.reason}`)))) : null),
+          (r.unmet || []).length ? h("div", { class: "gap" }, h("h3", {}, `Not covered (${sum(r.unmet, (g) => g.quantity)})`),
+            h("p", {}, r.unmet.map((g, i) => [i ? ", " : "", h("b", { title: g.reason }, `${g.quantity} ${unitText(g.resource_type)}`), ` (${AGENCY[g.requested_by]?.label || g.requested_by})`])),
+            r.unmet.some((g) => /mutual aid/i.test(g.reason || "")) ? h("p", { class: "small muted" }, "Mutual aid requested from neighbouring services.") : null) : null),
         h("div", { class: "sec" }, h("h3", {}, "Joint orders"),
-          Object.entries(dirs).map(([who, list]) => list.map((d) => h("div", { class: "order" }, h("i", { style: `background:${pri(d.priority)}`, title: d.priority }), who === "all" ? h("b", {}, "All") : agencyChip(who), h("span", {}, d.action)))),
+          (urgent.length ? urgent : orders.slice(0, 3)).map(([who, d]) => order(who, d)),
+          (urgent.length ? rest : orders.slice(3)).length ? more(`More orders (${(urgent.length ? rest : orders.slice(3)).length})`, (urgent.length ? rest : orders.slice(3)).map(([who, d]) => order(who, d))) : null,
           (r.related_incidents || []).length ? h("p", { class: "small muted", style: "margin-top:8px" }, `Related nearby: ${r.related_incidents.map((x) => x.incident_id || x).join(", ")}`) : null)));
   },
   why(inc, r, job) {
     const routing = r?.routing || job?.routing, agents = r?.agent_responses || job?.agents || [];
+    const others = routing ? (routing.agencies || []).filter((a) => a !== routing.lead_agency).map((a) => AGENCY[a]?.label || a) : [];
     return h("div", {},
-      routing ? h("p", { class: "sec" }, h("b", {}, `Qwen routed to ${(routing.agencies || []).map((a) => (AGENCY[a]?.label || a) + (a === routing.lead_agency ? " (lead)" : "")).join(", ")}`), routing.rationale ? `: ${routing.rationale} ` : " ", byBadge(routing.executed_by)) : h("p", { class: "muted sec" }, "Waiting for Qwen to route this call."),
+      routing ? h("p", { class: "sec", title: routing.rationale || "" }, h("b", {}, `Qwen: ${AGENCY[routing.lead_agency]?.label || routing.lead_agency} leads${others.length ? " – " + others.join(", ") : ""} `), byBadge(routing.executed_by))
+        : h("p", { class: "muted sec" }, "Waiting for Qwen to route this call."),
       h("div", { class: "agent-cards" }, agents.map(agentCard)),
-      r ? h("div", { class: "sec", style: "margin-top:14px" }, h("h3", {}, "CR's final call"), h("p", {}, r.cr_rationale || "No rationale recorded.", " ", byBadge(r.cr_executed_by))) : null);
+      r ? h("div", { class: "sec", style: "margin-top:12px" }, h("b", {}, "CR final call "), byBadge(r.cr_executed_by), r.cr_rationale ? more("Rationale", h("p", { class: "small" }, r.cr_rationale)) : null) : null);
   },
   conflicts(inc, r, job) {
     const hard = r?.hard_conflicts || job?.conflicts?.hard || [], res = r?.hard_resolutions || job?.cr?.resolutions || [];
@@ -1163,15 +1192,17 @@ const TAB = {
     return h("div", { class: "two" },
       h("section", {}, h("h3", { class: "sec" }, "Hard: units and crews"), hard.length ? hard.map((c) => {
         const fix = res.find((x) => x.resource_type === c.resource_type);
+        // One line: what was short, and what was done. Code, detail and rationale sit behind "Details".
+        const action = fix ? `${SHORT_ACTION[fix.action] || nice(fix.action)}${fix.substitute_type ? ` → ${unitText(fix.substitute_type)}` : ""}${fix.preempt_unit_ids?.length ? ` ×${fix.preempt_unit_ids.length}` : ""}${fix.mutual_aid_for_remainder ? " + mutual aid" : ""}` : "unresolved";
         return h("article", { class: "conflict hard" },
-          h("header", {}, h("b", {}, `${HARD_KIND[c.kind] || nice(c.kind)}: ${nice(c.resource_type)}`), h("span", { class: "muted" }, `${c.requested} asked, ${c.available} free`)),
-          h("p", { class: "code" }, c.kind), h("p", {}, (c.agencies || []).map(agencyChip), " ", h("span", { class: "muted" }, c.detail)),
-          fix ? h("p", {}, h("b", {}, `${ACTION[fix.action] || nice(fix.action)}${fix.substitute_type ? ` (${nice(fix.substitute_type)})` : ""}${fix.preempt_unit_ids?.length ? `: ${fix.preempt_unit_ids.join(", ")}` : ""}${fix.mutual_aid_for_remainder ? ", mutual aid for the rest" : ""}. `), fix.rationale, " ", byBadge(fix.executed_by)) : null);
+          h("header", {}, h("b", {}, `${cap(unitText(c.resource_type))}: ${c.requested} asked, ${c.available} free`), h("span", { class: "small" }, "→ ", h("b", {}, action), " ", byBadge(fix?.executed_by))),
+          more("Details", h("p", { class: "code" }, c.kind), h("p", { class: "small" }, HARD_KIND[c.kind] || nice(c.kind), ". ", c.detail),
+            fix ? h("p", { class: "small" }, fix.rationale, fix.preempt_unit_ids?.length ? ` Units: ${fix.preempt_unit_ids.join(", ")}.` : "") : null));
       }) : h("p", { class: "muted" }, "None: every request could be met.")),
       h("section", {}, h("h3", { class: "sec" }, "Soft: how agencies work the scene"), soft.length ? soft.map((s) => h("article", { class: "conflict sev-" + s.severity },
-        h("header", {}, h("b", {}, SOFT[s.code] || nice(s.code)), h("span", { class: "muted small" }, `${s.severity} · ${s.source}`)),
-        h("p", { class: "code" }, s.code), h("p", {}, (s.agencies || []).map(agencyChip), " ", h("span", { class: "muted" }, s.detail)),
-        s.suggested_resolution ? h("p", {}, h("b", {}, "Suggested: "), s.suggested_resolution) : null)) : h("p", { class: "muted" }, "None detected.")));
+        h("header", {}, h("b", {}, SOFT[s.code] || nice(s.code)), h("span", {}, (s.agencies || []).map(agencyChip))),
+        more("Details", h("p", { class: "code" }, `${s.code} – ${s.severity} – ${s.source}`), h("p", { class: "small" }, s.detail),
+          s.suggested_resolution ? h("p", { class: "small" }, h("b", {}, "Suggested: "), s.suggested_resolution) : null))) : h("p", { class: "muted" }, "None detected.")));
   },
   manifest(inc, r) {
     if (!r) return h("p", { class: "muted" }, "CR has not written the manifest yet.");
@@ -1199,21 +1230,24 @@ const TAB = {
 
 function agentCard(p) {
   const sc = p.scene_constraints || {}, md = p.mission_details || {}, color = agencyColor(p.agency);
+  // Card face: what the agent asks for and the scene numbers others must respect. Everything else is one click away.
+  const cordons = [sc.cordon_inner_radius_m && `inner ${sc.cordon_inner_radius_m} m`, sc.cordon_outer_radius_m && `outer ${sc.cordon_outer_radius_m} m`, sc.evacuation_radius_m && `evac ${sc.evacuation_radius_m} m`].filter(Boolean);
   return h("article", { class: "agent-card" },
-    h("header", {}, h("span", { class: "agent-chip", style: `--c:${color}` }, AGENTS[p.agent_id]?.label || p.agent_id), byBadge(p.executed_by), p.latency_ms != null ? h("span", { class: "muted small" }, `${(p.latency_ms / 1000).toFixed(1)} s`) : null),
-    md.summary ? h("p", {}, md.summary) : null,
-    p.confidence != null ? h("div", { title: "Model confidence" }, h("div", { class: "conf" }, h("span", { style: `width:${Math.round(p.confidence * 100)}%;--c:${color};background:${color}` })), h("p", { class: "muted small" }, `Confidence ${Math.round(p.confidence * 100)}%`)) : null,
-    h("h4", {}, "Asks for"), h("ul", {}, (p.resource_requests || []).map((q) => h("li", {}, `${q.quantity} ${nice(q.resource_type)}${q.priority === 1 ? " (essential)" : ""}${q.max_eta_min ? `, within ${q.max_eta_min} min` : ""}${q.justification ? `: ${q.justification}` : ""}`))),
-    h("h4", {}, "Scene"), h("dl", { class: "kv" },
-      [["Entry", sc.scene_entry], ["Inner cordon", sc.cordon_inner_radius_m && `${sc.cordon_inner_radius_m} m`], ["Outer cordon", sc.cordon_outer_radius_m && `${sc.cordon_outer_radius_m} m`],
-       ["Evacuation", sc.evacuation_radius_m && `${sc.evacuation_radius_m} m`], ["Staging", sc.staging_area], ["Road closures", (sc.road_closures || []).join(", ")],
-       ["Needs from others", (sc.inter_agency_needs || []).map((n) => `${AGENCY[n.agency]?.label || n.agency}: ${n.need}`).join("; ")]]
-        .filter(([, v]) => v).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])),
-    (md.tactical_plan || []).length ? [h("h4", {}, "Plan"), h("ul", {}, md.tactical_plan.map((x) => h("li", {}, x)))] : null,
-    (md.safety_notes || []).length ? [h("h4", {}, "Safety"), h("ul", {}, md.safety_notes.map((x) => h("li", {}, x)))] : null,
-    Object.keys(md.specialist_metadata || {}).length ? [h("h4", {}, "Specialist detail"), h("dl", { class: "kv" }, Object.entries(md.specialist_metadata).flatMap(([k, v]) => [h("dt", {}, cap(nice(k))), h("dd", {}, typeof v === "object" ? JSON.stringify(v) : String(v))]))] : null,
-    (p.kb_citations || []).length ? [h("h4", {}, "Knowledge base"), h("ul", { class: "small" }, p.kb_citations.map((x) => h("li", {}, nice(x).replace("#", ": "))))] : null,
-    raw(p));
+    h("header", {}, h("span", { class: "agent-chip", style: `--c:${color}` }, AGENTS[p.agent_id]?.label || p.agent_id), byBadge(p.executed_by),
+      h("span", { class: "muted small" }, [p.confidence != null && `${Math.round(p.confidence * 100)}% sure`, p.latency_ms != null && `${(p.latency_ms / 1000).toFixed(1)} s`].filter(Boolean).join(" – "))),
+    h("dl", { class: "kv" },
+      h("dt", {}, "Asks"), h("dd", {}, asks(p.resource_requests, 4) || "nothing"),
+      sc.scene_entry ? [h("dt", {}, "Entry"), h("dd", {}, sc.scene_entry)] : null,
+      cordons.length ? [h("dt", {}, "Cordons"), h("dd", {}, cordons.join(" – "))] : null,
+      sc.staging_area ? [h("dt", {}, "RVP"), h("dd", {}, sc.staging_area)] : null),
+    more("Plan, safety, sources",
+      (md.tactical_plan || []).length ? [h("h4", {}, "Plan"), h("ul", {}, md.tactical_plan.map((x) => h("li", {}, x)))] : null,
+      (md.safety_notes || []).length ? [h("h4", {}, "Safety"), h("ul", {}, md.safety_notes.map((x) => h("li", {}, x)))] : null,
+      (sc.inter_agency_needs || []).length ? [h("h4", {}, "Needs from others"), h("ul", {}, sc.inter_agency_needs.map((n) => h("li", {}, `${AGENCY[n.agency]?.label || n.agency}: ${n.need}`)))] : null,
+      (sc.road_closures || []).length ? [h("h4", {}, "Road closures"), h("p", {}, sc.road_closures.join(", "))] : null,
+      Object.keys(md.specialist_metadata || {}).length ? [h("h4", {}, "Specialist detail"), h("dl", { class: "kv" }, Object.entries(md.specialist_metadata).flatMap(([k, v]) => [h("dt", {}, cap(nice(k))), h("dd", {}, typeof v === "object" ? JSON.stringify(v) : String(v))]))] : null,
+      (p.kb_citations || []).length ? [h("h4", {}, "Knowledge base"), h("ul", { class: "small" }, p.kb_citations.map((x) => h("li", {}, nice(x).replace("#", ": "))))] : null,
+      raw(p)));
 }
 
 async function loadBrief(id) {
@@ -1353,7 +1387,7 @@ function initCallForm() {
 
 function setMode(m) {
   S.mode = m;
-  $("modeLabel").textContent = m === "live" ? `live · ${S.config.live_label || "models"}` : "rules only (mock)";
+  $("modeLabel").textContent = m === "live" ? `live – ${S.config.live_label || "models"}` : "rules only (mock)";
   $("modeLabel").className = "pill " + (m === "live" ? "ok" : "");
   $("modeSeg").replaceChildren(
     h("button", { type: "button", "aria-pressed": m === "live", disabled: !S.config.live_available, onclick: () => setMode("live") }, "Live models"),
@@ -1411,21 +1445,21 @@ async function bootBrief(id) {
     let b;
     try { b = await api(`/api/brief/${encodeURIComponent(id)}`); }
     catch (e) { root.replaceChildren(h("div", { class: "brief-wrap" }, h("p", {}, `Could not load ${id}: ${e.message}`))); return; }
-    document.title = `${b.incident_id} · ${b.headline}`;
+    document.title = `${b.incident_id} – ${b.headline}`;
     const orders = Object.entries(b.orders).flatMap(([who, list]) => list.map((o) => ({ who, ...o }))).filter((o) => agency === "all" || o.who === agency || o.who === "all");
     const units = b.units.filter((u) => agency === "all" || u.agency === agency);
     const tab = (k, label) => h("button", { "aria-pressed": agency === k, onclick: () => { agency = k; history.replaceState(null, "", `?brief=${id}${k === "all" ? "" : "&agency=" + k}`); draw(); } }, label);
     const ev = b.evaluation;
     root.replaceChildren(h("div", { class: "brief-wrap" },
-      h("div", { class: "brief-top" }, h("span", {}, `${b.incident_id} · ${b.status}`), h("span", {}, `Severity ${b.severity}/5`)),
+      h("div", { class: "brief-top" }, h("span", {}, `${b.incident_id} – ${b.status}`), h("span", {}, `Severity ${b.severity}/5`)),
       h("h1", {}, b.headline), h("p", { class: "dek" }, b.dek), h("div", { class: "dateline" }, `${b.dateline} — ${b.place}`),
       h("section", {}, h("h3", {}, "Key facts"), h("dl", { class: "facts" }, Object.entries(b.facts).flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, String(v))]))),
       h("section", {}, h("h3", {}, "Orders"), h("div", { class: "btabs" }, tab("all", "All"), tab("police", "Police"), tab("ambulance", "Ambulance"), tab("fire", "Fire")),
         orders.length ? orders.map((o) => h("div", { class: "b-order" }, h("i", { style: `background:${css(o.priority === "immediate" ? "--bad" : o.priority === "high" ? "--warn" : "--rules")}` }),
           h("div", {}, h("b", {}, o.who === "all" ? "All crews: " : `${cap(o.who)}: `), o.action))) : h("p", { class: "hint" }, "No orders for this agency.")),
       h("section", {}, h("h3", {}, `Units (${units.length})`),
-        units.map((u) => h("div", { class: "b-unit" }, h("div", { class: "l1" }, h("span", {}, `${u.callsign} · ${u.type}`), h("span", {}, `ETA ${Math.round(u.eta_min)} min`)),
-          h("div", { class: "l2" }, `${u.station}${u.reassigned_from ? `, reassigned from ${u.reassigned_from}` : ""} · ${u.crew.join(", ")}`), u.task ? h("div", { class: "l2" }, u.task) : null)),
+        units.map((u) => h("div", { class: "b-unit" }, h("div", { class: "l1" }, h("span", {}, `${u.callsign} – ${u.type}`), h("span", {}, `ETA ${Math.round(u.eta_min)} min`)),
+          h("div", { class: "l2" }, `${u.station}${u.reassigned_from ? `, reassigned from ${u.reassigned_from}` : ""} – ${u.crew.join(", ")}`), u.task ? h("div", { class: "l2" }, u.task) : null)),
         b.gaps.length ? h("p", { style: "color:var(--bad)" }, "Not yet covered: " + b.gaps.join("; ")) : null),
       h("section", {}, h("h3", {}, "Incident log"), h("div", { class: "b-log" }, b.log.flatMap((l) => [h("time", {}, l.ts.slice(11, 16)), h("div", { class: l.kind === "flag" ? "flag" : "" }, l.text)]))),
       ev ? h("section", {}, h("h3", {}, "Outcome"), h("p", {}, h("b", {}, `${ev.score}/100, grade ${ev.grade}. `), nice(ev.verdict) + "."),
