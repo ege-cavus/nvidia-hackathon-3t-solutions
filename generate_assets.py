@@ -4,9 +4,11 @@ Supply the council's 212-camera GeoJSON locally; no dataset is bundled or invent
 """
 import argparse
 import json
+import math
 import random
 from pathlib import Path
-from state_schema import HERO_CAMERAS, get_initial_city_state
+from state_schema import HERO_CAMERAS, get_initial_city_state, make_incident
+from knowledge_base import NODE_HISTORICAL_PROBABILITIES
 
 
 def load_cctv_geojson(path, expected_count=212):
@@ -20,11 +22,18 @@ def load_cctv_geojson(path, expected_count=212):
         geometry = feature.get("geometry") or {}
         if geometry.get("type") != "Point" or len(geometry.get("coordinates", [])) < 2:
             raise ValueError("Each camera must have Point coordinates [longitude, latitude]")
+        lon, lat = geometry["coordinates"][:2]
+        if any(type(v) not in (int, float) or not math.isfinite(v) for v in (lon, lat)) or not (-180 <= lon <= 180 and -90 <= lat <= 90):
+            raise ValueError("Invalid longitude/latitude")
     return data
 
 
 def prepare_video(source, destination, max_frames=300, fps=10.0):
     import cv2
+    if Path(source).resolve() == Path(destination).resolve():
+        raise ValueError("Video source and destination must differ")
+    if max_frames <= 0 or fps <= 0:
+        raise ValueError("max_frames and fps must be positive")
     capture = cv2.VideoCapture(str(source))
     writer = None
     count = 0
@@ -52,28 +61,55 @@ def prepare_video(source, destination, max_frames=300, fps=10.0):
     return count
 
 
+def extract_frame(video_path, output_path):
+    import cv2
+    capture = cv2.VideoCapture(str(video_path))
+    try:
+        ok, frame = capture.read()
+        if not ok:
+            raise ValueError(f"No readable frame in {video_path}")
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        if not cv2.imwrite(str(output_path), frame):
+            raise ValueError(f"Could not write {output_path}")
+    finally:
+        capture.release()
+
+
+def prepare_hero_assets():
+    """Prepare frames for supplied Cosmos MP4s; never claim missing videos exist."""
+    results = {}
+    for cam, details in HERO_CAMERAS.items():
+        path = Path(details["cosmos_video_path"])
+        if path.is_file():
+            extract_frame(path, details["frame_path"])
+            results[cam] = details["frame_path"]
+        else:
+            results[cam] = "MISSING_LOCAL_COSMOS_VIDEO"
+    return results
+
+
 def apply_super_storm(state: dict, seed=42) -> dict:
     """Mutate the supplied state with repeatable synthetic incidents."""
     rng = random.Random(seed)
-    for index, (cam, details) in enumerate(HERO_CAMERAS.items(), 1):
-        state["active_incidents"][f"STORM_{index:02d}"] = {
-            "camera_id": cam, "hazard": rng.choice(["flood", "fire", "trauma"]),
-            "severity": rng.randint(4, 10), "road_blocked": rng.choice([True, False]),
-            "vlm_summary": "Synthetic Seed #42 Super-Storm scenario" if seed == 42 else f"Synthetic storm seed {seed}",
-            "video_path": details["disaster_video_path"],
-        }
-    # TODO: map blocked camera roads to OSM edge tuples once a graph is available.
+    for cam in HERO_CAMERAS:
+        weights = NODE_HISTORICAL_PROBABILITIES[cam]["hazard_weights"]
+        hazard = rng.choices(list(weights), weights=list(weights.values()))[0]
+        state["active_incidents"][cam] = make_incident(
+            cam, hazard, rng.randint(4, 10), state["tick"], rng.choice([True, False]))
     return state
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prepare-heroes", action="store_true")
     parser.add_argument("--geojson", type=Path)
     parser.add_argument("--source", type=Path)
     parser.add_argument("--destination", type=Path)
     args = parser.parse_args()
     if bool(args.source) != bool(args.destination):
         parser.error("--source and --destination must be provided together")
+    if args.prepare_heroes:
+        print(json.dumps(prepare_hero_assets(), indent=2))
     if args.geojson:
         print(f"Loaded {len(load_cctv_geojson(args.geojson)['features'])} cameras")
     if args.source:

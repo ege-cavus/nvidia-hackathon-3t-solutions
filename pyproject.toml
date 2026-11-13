@@ -9,10 +9,10 @@ description = "Sheffield Urban Response Unit hackathon digital twin"
 requires-python = ">=3.11"
 dependencies = [
   "osmnx", "networkx", "geopandas", "shapely", "scikit-learn",
-  "gymnasium", "stable-baselines3[extra]", "torch", "numpy", "numba",
+  "numpy",
   "openai", "ollama", "opencv-python-headless", "pillow", "pydantic",
   "streamlit", "pydeck", "plotly", "pandas", "psutil",
 ]
 
 [tool.setuptools]
-py-modules = ["state_schema", "sheffield_env", "train_rl", "agent_orchestrator", "app", "generate_assets"]
+py-modules = ["state_schema", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]

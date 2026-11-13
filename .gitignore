@@ -5,3 +5,6 @@ __pycache__/
 .env
 *.mp4
 !.gitkeep
+
+*.egg-info/
+assets/*.graphml

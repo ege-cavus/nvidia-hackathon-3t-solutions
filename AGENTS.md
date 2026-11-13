@@ -1,72 +1,83 @@
 # SURU team and agent boundaries
 
-SURU is a hackathon simulation of an emergency command digital twin for Sheffield, UK.
+SURU is a hackathon simulation: graph world -> Qwen vision triage and selective
+routing -> selected Nemotron agency proposals -> validated consensus or Qwen takeover.
+No RL/PPO training is used.
 
-## Shared contract
+## Shared contracts
 
-`state_schema.py` is the single source of truth for camera IDs, local asset paths,
-emergency hubs and fresh city state. All tracks import `get_initial_city_state`.
-Pass the same state dictionary between components when integrating; calling the
-factory again creates an independent simulation. Do not duplicate the schema.
-Coordinates are team-supplied; video assets and the 212-camera dataset are not bundled.
+state_schema.py owns cameras, hubs, incident constructors and fresh city state.
+knowledge_base.py owns probability priors, public source links and simulation SOPs.
+Incidents are keyed by cam_id (not arbitrary incident ID); resource_db replaces
+units, and message_board replaces comms_log. All components share one state object.
+Never duplicate or silently rename contract fields. Coordinate schema changes
+through Track 4's GitHub issue before updating consumers.
 
-- Track 1 owns simulation ticks, graph routing, hazard propagation and PPO training.
-- Track 2 consumes CCTV and state, runs Gold vision triage and three concurrent
-  Bronze advisers, and appends timestamped command messages.
-- Track 3 owns Streamlit session state, displays maps/feeds/comms and captures human actions.
-- Track 4 owns data preparation, deterministic scenarios and shared schema changes.
-
-Incidents are keyed by incident ID and contain camera_id, hazard (flood/fire/trauma),
-severity (1?10), road_blocked, vlm_summary and video_path. Units contain type, lat,
-lon, home_hub, status, target_cam (camera ID or None), eta_ticks,
-on_scene_ticks_remaining, cooldown_ticks_remaining and total_busy_ticks.
-blocked_edges uses OSM (u, v, key) tuples. Comms senders are BRONZE_POLICE,
-BRONZE_FIRE, BRONZE_NHS or GOLD_COMMAND; timestamp is a string (simulation tick
-in these stubs). Modes are AI_AUTONOMOUS and HUMAN_VS_AI; scores are floats.
+Each incident has location, hazard, severity 1..10, road_blocked, local Cosmos
+video_path, qwen_report and pipeline status. Qwen selects FIRE/POLICE/AMBULANCE;
+only selected models run. Safety floors may add a required agency. Board senders:
+QWEN_TRIAGE, NEMOTRON_FIRE, NEMOTRON_POLICE, NEMOTRON_AMBULANCE,
+QWEN_GOLD_ARBITER. Entries record tick, incident_cam, proposal_text, proposed_units
+and consensus_status. Deadlock, timeout, malformed model output, unavailable units
+or coverage violations cannot bypass the allocator. Qwen decisions are binding
+only after the same deterministic validation as consensus. Failure defers dispatch.
 
 ## Strict File-Lease Rule (Zero Merge Conflicts)
 
 | Track | Branch | ONLY edit |
 | --- | --- | --- |
-| 1 | feat/track1-rl | sheffield_env.py, train_rl.py |
+| 1 | feat/track1-sim | sheffield_sim.py |
 | 2 | feat/track2-ollama | agent_orchestrator.py |
 | 3 | feat/track3-ui | app.py |
-| 4 | feat/track4-data | generate_assets.py, state_schema.py |
+| 4 | feat/track4-data | state_schema.py, knowledge_base.py, generate_assets.py |
 
-These leases apply to humans and coding agents. Do not edit another track's files.
-Send schema requests to Track 4 and agree the interface before integration.
-Shared configuration, docs and binary asset additions require coordination with
-the integration owner; they are not implicitly leased to any track. Keep MP4s
-local and preserve the tracked .gitkeep placeholders. Merge through the team's
-integration workflow; do not rename keys or change units silently.
+Leases apply to humans and coding agents. feat/track1-rl is a compatibility branch
+synced to main; new simulation work belongs on feat/track1-sim. Shared dependency,
+test and documentation changes belong to coordinated integration on main.
 
-## Starter limitations
+## 4-stage vehicle lifecycle and station geography
 
-The environment uses five camera severities and immediate incident resolution;
-road routing and spatial spread are extension points. The UI's Beat the AI panel
-is a scoring sandbox pending PPO integration. Gold/Bronze output is advisory text
-and does not execute dispatches. Storm events are synthetic. Nothing here is an
-operational emergency service or verified live CCTV feed.
+POL_1/POL_2 start at Shepcote/Snig Hill; FIRE_1/FIRE_2 at Eyre/Rivelin;
+AMB_1/AMB_2 at Northern General/Royal Hallamshire. These are team-supplied
+coordinates and demonstration deployments, not a verified live fleet.
 
-## 4-Stage Vehicle Lifecycle & Station Geography
+AVAILABLE -> DEPLETED_EN_ROUTE -> DEPLETED_ON_SCENE -> DEPLETED_RETURNING
+-> DEPLETED_COOLDOWN -> AVAILABLE. Ambulances transport to Northern General,
+complete hospital handover, then return to home_hub if different (another
+DEPLETED_RETURNING leg). Fire restocks after returning. Only is_unit_available(u)
+allows dispatch. East-to-west deployments deplete the resource for the complete
+outward route + on-scene work + return/hospital/base legs + handover/restock.
+Timers are nonnegative integer one-minute ticks. total_depletion_ticks_remaining
+sums travel_to_scene_ticks + on_scene_ticks + return_to_base_ticks +
+cooldown_ticks_remaining. On-scene work can extend if the hazard escalates; police hold until severity <4. The
+nominal total is a forecast, not an unconditional release guarantee.
 
-Units start at their home_hub in EMERGENCY_HUBS. POL_1/POL_2 start at Shepcote
-and Snig Hill; FIRE_1/FIRE_2 at Central Eyre and Rivelin; AMB_1/AMB_2 at
-Northern General and Royal Hallamshire respectively.
+Directed graph routes exclude blocked_edges (u,v,key). In OSM mode edge travel
+times derive from street lengths and inferred speeds: graph-exact calculations
+with estimated speeds, not real-world exact arrival times. Round-trip routes are
+snapshotted at dispatch; mid-trip road-closure rerouting is follow-up work.
+Offline mode uses explicitly synthetic links and a 30 km/h assumption.
 
-Only is_unit_available(u) permits dispatch: status must be IDLE_AT_BASE and
- total_busy_ticks must be zero. EN_ROUTE, ON_SCENE, RETURNING and COOLDOWN
-units are unavailable, including at stage boundaries where a timer is zero.
+## GitHub issues are the communication channel
 
-Dispatching from East Sheffield (POLICE_HQ_SHEPCOTE) to West Sheffield (CAM_10)
-locks the vehicle for travel time + on-scene duration + return-to-station/hospital
-trip + restock/handover cooldown. Travel follows unblocked OSMnx streets;
-reject unreachable dispatches. Return to home_hub, then complete cooldown.
+Architecture/integration: #1. Track 1: #2. Track 2: #3. Track 3: #4. Track 4: #5.
+Post interface requests, blockers, test evidence and handoff notes on the relevant
+issue. Link commits and cross-track issues. Do not change a teammate's leased
+file to resolve a disagreement; record the requested contract change first.
+Repository: https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/issues
 
-Timers are nonnegative integer ticks. total_busy_ticks is always eta_ticks +
-on_scene_ticks_remaining + cooldown_ticks_remaining. eta_ticks represents the
-current outward or return leg; compute the return leg when leaving the scene.
-Thus this sum is a current timer summary, not an advance round-trip forecast.
-The Track 1 helper documents transitions; routed movement and countdown updates
-remain integration work. UI dispatch is disabled until that implementation is
-available, and the existing PPO demo still uses abstract incident resolution.
+## Provenance and demo limits
+
+NODE_HISTORICAL_PROBABILITIES retains the requested API name but contains
+SYNTHETIC_UNCALIBRATED values. EA flood zones and STATS19 are source context;
+no spatial join or historical fit has been performed. Numeric pumps, cordons,
+reserve thresholds and two-tick cooldowns are simulation rules, not verified
+SYFR/SYP/YAS SOPs. JESIP supplies shared-risk and coordination context; NHS ARP
+Category 1 uses a seven-minute population mean, not seven ticks per patient.
+Royal Hallamshire is a demo base, not asserted to be an adult A&E. Verify hospital
+capabilities before extending routing. Never present simulated output as advice.
+The model names are user-specified defaults; verify installed Ollama model tags
+and set SURU_QWEN_MODEL / SURU_NEMOTRON_MODEL on the demo host.
+The 212-camera GeoJSON and five Cosmos videos must be supplied locally with
+provenance/licensing; missing assets are shown explicitly. Preserve .gitkeep;
+MP4 files remain ignored. No model weights or live CCTV feeds are bundled.
