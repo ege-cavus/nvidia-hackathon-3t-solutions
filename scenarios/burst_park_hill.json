@@ -1,0 +1,30 @@
+[
+  {
+    "category": "structure_fire",
+    "description": "Flats on fire at Park Hill, smoke coming out of the fourth floor windows. People shouting from a balcony.",
+    "location": {"lat": 53.3800, "lon": -1.4610, "address": "Park Hill, South Street", "district": "Park Hill"},
+    "severity": 4, "casualties_reported": 1, "people_trapped": 2, "hazards": ["smoke"],
+    "source": "999 caller A"
+  },
+  {
+    "category": "structure_fire",
+    "description": "Big fire in the Park Hill flats, I can see flames from Duke Street. Two people on a balcony.",
+    "location": {"lat": 53.3793, "lon": -1.4622, "address": "Duke Street, Park Hill", "district": "Park Hill"},
+    "severity": 4, "casualties_reported": 0, "people_trapped": 2, "hazards": ["smoke"],
+    "source": "999 caller B"
+  },
+  {
+    "category": "high_rise_fire",
+    "description": "Smoke pouring from the Park Hill block near the station, fourth floor alight.",
+    "location": {"lat": 53.3806, "lon": -1.4598, "address": "Sheaf Street, near Park Hill", "district": "City Centre"},
+    "severity": 5, "casualties_reported": 0, "people_trapped": 0, "hazards": ["smoke"],
+    "source": "999 caller C"
+  },
+  {
+    "category": "rtc",
+    "description": "Car swerved to avoid a fire engine and hit a lamp post at the bottom of Duke Street. Driver dazed, conscious.",
+    "location": {"lat": 53.3776, "lon": -1.4645, "address": "Duke Street / Talbot Street", "district": "Park Hill"},
+    "severity": 2, "casualties_reported": 1, "people_trapped": 0, "hazards": ["live traffic"],
+    "source": "999 caller D"
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "category": "rtc",
+    "description": "Two-car collision on the Parkway near the Darnall junction. Two occupants trapped, one unconscious. Fuel leaking.",
+    "location": {"lat": 53.3870, "lon": -1.4300, "address": "Sheffield Parkway, Darnall", "district": "Darnall"},
+    "severity": 3,
+    "casualties_reported": 3,
+    "people_trapped": 2,
+    "hazards": ["fuel leak", "live traffic"]
+  },
+  {
+    "category": "firearms",
+    "description": "Reports of shots fired outside a bar on Fitzalan Square. Two people injured, suspect seen leaving on foot towards Haymarket.",
+    "location": {"lat": 53.3825, "lon": -1.4645, "address": "Fitzalan Square, City Centre", "district": "City Centre"},
+    "severity": 4,
+    "casualties_reported": 2,
+    "weapons_involved": true,
+    "hazards": ["armed suspect at large"]
+  },
+  {
+    "category": "high_rise_fire",
+    "description": "Fire on the 9th floor of a residential tower block in Broomhall, smoke spreading to floors above. Residents reported trapped on upper floors.",
+    "location": {"lat": 53.3770, "lon": -1.4830, "address": "Hanover Way, Broomhall", "district": "Broomhall"},
+    "severity": 5,
+    "casualties_reported": 6,
+    "people_trapped": 3,
+    "hazards": ["smoke", "falling debris"]
+  },
+  {
+    "category": "hazmat",
+    "description": "Chemical tanker leaking near Meadowhall. Strong smell, several workers from an adjacent warehouse report breathing difficulty.",
+    "location": {"lat": 53.4130, "lon": -1.4100, "address": "Meadowhall Road, Tinsley", "district": "Tinsley"},
+    "severity": 4,
+    "casualties_reported": 4,
+    "hazards": ["unknown chemical", "toxic vapour"]
+  },
+  {
+    "category": "structure_fire",
+    "description": "Large fire in a block at Park Hill flats spreading across two floors. Two residents trapped on a balcony.",
+    "location": {"lat": 53.3800, "lon": -1.4610, "address": "Park Hill, South Street", "district": "Park Hill"},
+    "severity": 5,
+    "casualties_reported": 2,
+    "people_trapped": 2,
+    "hazards": ["smoke", "structural collapse risk"]
+  }
+]

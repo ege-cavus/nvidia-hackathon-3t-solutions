@@ -1,0 +1,34 @@
+{
+  "incident_id": 20261113000147,
+  "received_at": "2026-11-13T14:02:11Z",
+  "channel": "999",
+
+  "caller": {
+    "name": null,
+    "phone": "07700 900123",
+    "relationship": "witness",
+    "on_scene": true
+  },
+
+  "location": {
+    "address": "Hanover Way, Broomhall, Sheffield",
+    "landmark": "Tower block opposite the bus stop",
+    "lat": 53.3771,
+    "lon": -1.4829,
+    "location_source": "caller_gps",
+    "location_notes": "9th floor"
+  },
+
+  "description": "Caller says smoke is pouring out of the 9th floor of the tower on Hanover Way. People screaming from windows above. Caller is across the road, not in the building.",
+  "caller_reported_severity": "people trapped",
+
+  "casualties_reported": 0,
+  "people_trapped_reported": 3,
+  "patients": [],
+
+  "hazards_reported": ["smoke"],
+  "weapons_mentioned": false,
+
+  "persons_of_interest": [],
+  "vehicles": []
+}

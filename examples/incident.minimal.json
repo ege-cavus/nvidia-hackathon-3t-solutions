@@ -1,0 +1,7 @@
+{
+  "incident_id": 20261113000151,
+  "received_at": "2026-11-13T14:12:00Z",
+  "channel": "999",
+  "location": { "landmark": "Park Hill flats" },
+  "description": "Caller shouted 'fire, people inside' and hung up."
+}

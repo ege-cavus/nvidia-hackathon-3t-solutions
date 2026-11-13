@@ -1,0 +1,30 @@
+[project]
+name = "urban-response"
+version = "0.1.0"
+description = "Agentic urban incident response for Sheffield: Qwen orchestrator + Nemotron police/ambulance/fire agents on DGX Spark"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    "openai>=1.40",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27"]
+
+[project.scripts]
+urban-response = "urban_response.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["urban_response"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

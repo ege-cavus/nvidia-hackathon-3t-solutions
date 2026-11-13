@@ -1,0 +1,8 @@
+{
+  "category": "rtc",
+  "description": "Car hit a cyclist at the junction of Ecclesall Road and Hickmott Road. Cyclist conscious but has a suspected broken leg. Driver uninjured. One lane blocked.",
+  "location": {"lat": 53.3700, "lon": -1.4900, "address": "Ecclesall Road, Sharrow", "district": "Sharrow"},
+  "severity": 2,
+  "casualties_reported": 1,
+  "hazards": ["live traffic"]
+}
