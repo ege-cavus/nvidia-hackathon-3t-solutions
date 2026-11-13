@@ -62,8 +62,13 @@ built yet:
 - Additional map layers to be planned: for example roads/closures, unit routes,
   staging points and coverage. These are not yet specified.
 - Each station's stock in personnel and vehicles.
-- A popup/dialog per agent ("A1/A2/A3") showing that agent's interactions and
-  reasoning visually.
+- The mediation highway: a view showing how the agents interact, with lines
+  for each exchange and its reasoning. A1, A2 and A3 are the Nemotron agency
+  agents. They mediate through A_cr, the config resolution agent. A_cr reads
+  every agency's proposal, posts a JESIP-grounded joint picture (shared risk,
+  conflicts, coverage gaps), and each agency reads what the others and A_cr
+  posted before confirming or revising. "JESIP-grounded" means prompted with
+  JESIP doctrine context. No model is trained in this project.
 
 Already built (app.py on main): pydeck map, 4-panel CCTV with triage text,
 message board table, depletion table, scorecard, provenance expander.
@@ -79,9 +84,11 @@ Open decisions (do not invent):
 - **Personnel stock.** No crew or staffing field exists in state_schema.py.
   Showing manpower needs a Track 4 schema request (#5). Any numbers would be
   synthetic demo values and must be labelled that way.
-- **"A1/A2/A3".** Inferred to mean the three Nemotron agency agents (FIRE,
-  POLICE, AMBULANCE). Whether Qwen triage and the Qwen arbiter get their own
-  popups is not confirmed.
+- **A_cr is not built yet.** Today the agencies run in parallel and never read
+  each other's proposals. A_cr, a second negotiation round and its board
+  sender name are a Track 2 contract change (#3, schema via #5). The UI must
+  show the highway honestly until then.
+- **Which agency is A1, A2 and A3** is not confirmed.
 - **Additional map layers.** Which layers ship, and whether the presenter can
   toggle them, is undecided.
 - **Beat the Agents mode** (#6). Not yet confirmed as part of the judge demo.
