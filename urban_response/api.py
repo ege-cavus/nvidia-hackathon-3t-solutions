@@ -105,6 +105,15 @@ async def require_token(request: Request, call_next):
     return await call_next(request)
 
 
+# Lets a UI served from another origin (e.g. web/ on a laptop, reaching the Spark over an SSH
+# tunnel) call this API from the browser. Comma-separated origins; unset = no CORS headers.
+# Added after require_token so it wraps it: preflight OPTIONS is answered before the token check.
+if _cors := [o.strip() for o in os.getenv("UR_CORS_ORIGINS", "").split(",") if o.strip()]:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    app.add_middleware(CORSMiddleware, allow_origins=_cors, allow_methods=["*"], allow_headers=["*"])
+
+
 @app.get("/healthz", include_in_schema=False)
 def healthz():
     """Unauthenticated liveness probe for the tunnel / Vercel status check. Reveals nothing."""

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Keeps the SURU dashboard (localhost:3100) and the tunnel to the DGX Spark running in the background.
+     Install: cp web/com.suru.dashboard.plist ~/Library/LaunchAgents/ && launchctl load ~/Library/LaunchAgents/com.suru.dashboard.plist
+     Remove:  launchctl unload ~/Library/LaunchAgents/com.suru.dashboard.plist && rm ~/Library/LaunchAgents/com.suru.dashboard.plist
+     Log:     /tmp/suru-dashboard.log -->
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.suru.dashboard</string>
+  <key>ProgramArguments</key><array><string>/Users/egecavus/nvidia-hackathon/web/serve-forever.sh</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+  <key>StandardOutPath</key><string>/tmp/suru-dashboard.log</string>
+  <key>StandardErrorPath</key><string>/tmp/suru-dashboard.log</string>
+</dict></plist>

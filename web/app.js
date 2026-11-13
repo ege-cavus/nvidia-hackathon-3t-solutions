@@ -152,7 +152,7 @@ function renderList() {
   const closed = shown.filter((i) => i.status === "closed");
   $("ongoing-count").textContent = ongoing.length ? `– ${ongoing.length}` : "";
   $("ongoing").innerHTML = ongoing.length ? ongoing.map(card).join("")
-    : `<p class="empty">${store.incidents.length ? "No ongoing incidents match this filter." : "No incidents yet. Press ▶ Run demo scenario."}</p>`;
+    : `<p class="empty">${store.incidents.length ? "No ongoing incidents match this filter." : "No incidents yet. Press ▶ Run full demo."}</p>`;
   $("backlog-count").textContent = `(${backlog.length})`;
   $("backlog").innerHTML = backlog.map(card).join("");
   $("closed-count").textContent = `(${closed.length})`;
@@ -495,25 +495,49 @@ async function resetDemo() {
   }
 }
 
+const DONE_STATUSES = new Set(["dispatched", "partial", "failed", "closed", "merged", "backlog"]);
+const fmtElapsed = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+
+// One click = the whole demo: reset the board, send every scenario, then follow the live pipeline on the
+// DGX Spark until every incident has been dispatched, showing progress and elapsed time on the button.
 async function runDemo() {
   if (ui.demoRunning) return;
   ui.demoRunning = true;
   const btn = $("run-demo");
   btn.disabled = true;
+  const t0 = Date.now();
+  let label = "Resetting…";
+  const tick = setInterval(() => { btn.textContent = `${label} · ${fmtElapsed(Date.now() - t0)}`; }, 500);
   try {
+    await API.call("reset");
+    Object.assign(store, { incidents: [], responses: [], events: [], lastEventId: store.lastEventId });
+    ui.selected = null; baseline = null; lastMetrics = null; lastIncidentCount = 0;
+    await poll();
     const scenario = await API.call("scenario");
     for (let i = 0; i < scenario.length; i++) {
-      btn.textContent = `Running demo ${i + 1}/${scenario.length}…`;
+      label = `Sending incident ${i + 1}/${scenario.length}`;
       await API.call("createIncident", scenario[i]);
       poll();
       if (i < scenario.length - 1) await new Promise((r) => setTimeout(r, 3000));
     }
+    // Follow the pipeline until the backend reports no running jobs and every incident is resolved.
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 3000));
+      await poll();
+      const health = API.mode === "mock" ? { jobs_running: 0 } : await API.call("health");
+      const done = store.incidents.filter((i) => DONE_STATUSES.has(i.status)).length;
+      label = `Agents working · ${done}/${scenario.length} dispatched`;
+      if (!health.jobs_running && done >= Math.min(scenario.length, store.incidents.length)) break;
+    }
+    clearInterval(tick);
+    btn.textContent = `✓ Demo complete · ${fmtElapsed(Date.now() - t0)} · run again`;
   } catch (err) {
+    clearInterval(tick);
     setMode("offline", `Demo failed: ${err.message}`);
+    btn.textContent = "▶ Run full demo";
   } finally {
     ui.demoRunning = false;
     btn.disabled = false;
-    btn.textContent = "▶ Run demo scenario";
   }
 }
 
