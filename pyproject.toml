@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "suru"
+version = "0.1.0"
+description = "Sheffield Urban Response Unit hackathon digital twin"
+requires-python = ">=3.11"
+dependencies = [
+  "osmnx", "networkx", "geopandas", "shapely", "scikit-learn",
+  "gymnasium", "stable-baselines3[extra]", "torch", "numpy", "numba",
+  "openai", "ollama", "opencv-python-headless", "pillow", "pydantic",
+  "streamlit", "pydeck", "plotly", "pandas", "psutil",
+]
+
+[tool.setuptools]
+py-modules = ["state_schema", "sheffield_env", "train_rl", "agent_orchestrator", "app", "generate_assets"]
