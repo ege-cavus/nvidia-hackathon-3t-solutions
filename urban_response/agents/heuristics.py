@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import (
     Agency,
-    Incident,
+    Case,
     InterAgencyNeed,
     MissionDetails,
     RequestPriority,
@@ -43,12 +43,12 @@ class AgentDraft(BaseModel):
     confidence: float = Field(default=0.7, ge=0, le=1)
 
 
-def main_road(incident: Incident) -> str:
+def main_road(incident: Case) -> str:
     addr = incident.location.address.split(",")[0].strip()
     return re.sub(r"^\d+[a-zA-Z]?\s+", "", addr) or incident.location.district or "scene approach road"
 
 
-def route(incident: Incident) -> tuple[list[Agency], Agency, str]:
+def route(incident: Case) -> tuple[list[Agency], Agency, str]:
     cat = incident.category
     agencies: set[Agency] = set()
     if cat in FIRE_CATS | HAZ_CATS | {"flood", "rescue"} or incident.people_trapped:
@@ -72,7 +72,7 @@ def route(incident: Incident) -> tuple[list[Agency], Agency, str]:
     return order, lead, f"Rule-based routing for category '{cat}', severity {incident.severity}"
 
 
-def fire(incident: Incident) -> AgentDraft:
+def fire(incident: Case) -> AgentDraft:
     cat, sev, road = incident.category, incident.severity, main_road(incident)
     hazmat = cat in HAZ_CATS or any("chem" in h or "gas" in h for h in incident.hazards)
     reqs: list[ResourceRequest] = []
@@ -135,7 +135,7 @@ def fire(incident: Incident) -> AgentDraft:
     )
 
 
-def ambulance(incident: Incident) -> AgentDraft:
+def ambulance(incident: Case) -> AgentDraft:
     cat, sev, road = incident.category, incident.severity, main_road(incident)
     c = max(incident.casualties_reported, incident.people_trapped, 1 if cat in MEDICAL_CATS else 0)
     mci = c >= 5
@@ -184,7 +184,7 @@ def ambulance(incident: Incident) -> AgentDraft:
     )
 
 
-def police(incident: Incident) -> AgentDraft:
+def police(incident: Case) -> AgentDraft:
     cat, sev, road = incident.category, incident.severity, main_road(incident)
     armed = cat == "firearms" or incident.weapons_involved
     crime = cat in CRIME_CATS or armed

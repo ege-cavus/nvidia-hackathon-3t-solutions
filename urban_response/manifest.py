@@ -20,7 +20,7 @@ from collections import defaultdict
 
 from .agents.heuristics import CRIME_CATS, FIRE_CATS, HAZ_CATS
 from .conflicts.hard import Demand
-from .schemas import AgentResponse, Agency, Incident, ManifestItem, RequestPriority, ResourceRequest, RoutingDecision
+from .schemas import AgentResponse, Agency, Case, ManifestItem, RequestPriority, ResourceRequest, RoutingDecision
 
 # One of these serves the whole scene, whichever agency asked.
 SHARED_SCENE_TYPES = {"drone", "mobile_command_unit"}
@@ -30,7 +30,7 @@ def casualty_ambulances(n: int) -> int:
     return n if n <= 4 else 4 + math.ceil((n - 4) / 2)
 
 
-def life_safety_floors(incident: Incident, routing: RoutingDecision) -> dict[str, tuple[int, Agency, str]]:
+def life_safety_floors(incident: Case, routing: RoutingDecision) -> dict[str, tuple[int, Agency, str]]:
     """resource_type -> (minimum quantity, agency it is for, reason). Only for tasked agencies."""
     tasked = set(routing.agencies)
     cat, floors = incident.category, {}
@@ -69,7 +69,7 @@ def requested_totals(responses: list[AgentResponse]) -> dict[str, int]:
     return dict(out)
 
 
-def rule_manifest(incident: Incident, routing: RoutingDecision, responses: list[AgentResponse]) -> list[ManifestItem]:
+def rule_manifest(incident: Case, routing: RoutingDecision, responses: list[AgentResponse]) -> list[ManifestItem]:
     """Merge overlapping requests, drop nice-to-haves on smaller incidents, keep essentials."""
     per: dict[tuple[str, str], ManifestItem] = {}
     shared: dict[str, ManifestItem] = {}
@@ -97,7 +97,7 @@ def rule_manifest(incident: Incident, routing: RoutingDecision, responses: list[
     return list(per.values()) + list(shared.values())
 
 
-def enforce(manifest: list[ManifestItem], incident: Incident, routing: RoutingDecision,
+def enforce(manifest: list[ManifestItem], incident: Case, routing: RoutingDecision,
             responses: list[AgentResponse], catalogue: dict[str, str]) -> tuple[list[ManifestItem], list[str]]:
     """Apply sanity caps and life-safety floors over a manifest. Returns (manifest, adjustments)."""
     notes: list[str] = []

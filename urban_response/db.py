@@ -25,9 +25,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterator
 
-from .schemas import Incident, IncidentResponse, IncidentStatus
+from .schemas import Case, Incident, IncidentResponse, IncidentStatus, Triage
 
-SCHEMA_VERSION = 3  # bump when tables change; older demo DBs are rebuilt
+SCHEMA_VERSION = 5  # bump when tables change; older demo DBs are rebuilt
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS units (
@@ -64,26 +64,30 @@ CREATE TABLE IF NOT EXISTS hospitals (
 
 -- Incident DB -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS incidents (
-    incident_id   TEXT PRIMARY KEY,
+    incident_id   INTEGER PRIMARY KEY,                -- YYYYMMDDNNNNNN
     received_at   TEXT NOT NULL,
-    category      TEXT NOT NULL,
-    severity      INTEGER NOT NULL,
-    lat           REAL NOT NULL,
+    channel       TEXT NOT NULL,
+    category      TEXT NOT NULL,                      -- from triage
+    severity      INTEGER NOT NULL,                   -- from triage
+    lat           REAL NOT NULL,                      -- resolved by triage
     lon           REAL NOT NULL,
+    place         TEXT NOT NULL DEFAULT '',
     status        TEXT NOT NULL DEFAULT 'pending',    -- pending | merged | dispatched | backlog | closed
-    duplicate_of  TEXT REFERENCES incidents(incident_id),
+    duplicate_of  INTEGER REFERENCES incidents(incident_id),
     report_count  INTEGER NOT NULL DEFAULT 1,
     dispatched_at TEXT,
     completed_at  TEXT,
     closed_at     TEXT,
-    incident_json TEXT NOT NULL
+    incident_json TEXT NOT NULL,                      -- canonical incident, exactly as received
+    triage_json   TEXT NOT NULL,
+    dedup_json    TEXT                                -- MiniLM proposal + the agent's final duplicate decision
 );
 CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 
 -- Response DB -----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS responses (
-    response_id    TEXT PRIMARY KEY,
-    incident_id    TEXT NOT NULL REFERENCES incidents(incident_id),
+    response_id    INTEGER PRIMARY KEY,               -- YYYYMMDDNNNNNN
+    incident_id    INTEGER NOT NULL REFERENCES incidents(incident_id),
     created_at     TEXT NOT NULL,
     status         TEXT NOT NULL,                     -- dispatched | partial | failed
     decided_by     TEXT NOT NULL,                     -- CR
@@ -94,7 +98,7 @@ CREATE INDEX IF NOT EXISTS idx_responses_incident ON responses(incident_id);
 
 CREATE TABLE IF NOT EXISTS agent_responses (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    response_id  TEXT NOT NULL REFERENCES responses(response_id),
+    response_id  INTEGER NOT NULL REFERENCES responses(response_id),
     agent_id     TEXT NOT NULL,                       -- A1 | A2 | A3
     agency       TEXT NOT NULL,
     executed_by  TEXT NOT NULL,
@@ -104,8 +108,8 @@ CREATE TABLE IF NOT EXISTS agent_responses (
 CREATE TABLE IF NOT EXISTS allocations (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     unit_id             TEXT NOT NULL REFERENCES units(unit_id),
-    response_id         TEXT NOT NULL REFERENCES responses(response_id),
-    incident_id         TEXT NOT NULL REFERENCES incidents(incident_id),
+    response_id         INTEGER NOT NULL REFERENCES responses(response_id),
+    incident_id         INTEGER NOT NULL REFERENCES incidents(incident_id),
     requested_by        TEXT NOT NULL,
     start_at            TEXT NOT NULL,
     expected_release_at TEXT NOT NULL,
@@ -117,8 +121,8 @@ CREATE TABLE IF NOT EXISTS crew_assignments (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     person_id           TEXT NOT NULL REFERENCES personnel(person_id),
     unit_id             TEXT NOT NULL REFERENCES units(unit_id),
-    response_id         TEXT NOT NULL REFERENCES responses(response_id),
-    incident_id         TEXT NOT NULL REFERENCES incidents(incident_id),
+    response_id         INTEGER NOT NULL REFERENCES responses(response_id),
+    incident_id         INTEGER NOT NULL REFERENCES incidents(incident_id),
     start_at            TEXT NOT NULL,
     expected_release_at TEXT NOT NULL,
     released_at         TEXT
@@ -132,14 +136,14 @@ CREATE TABLE IF NOT EXISTS inventory_ledger (
     item_kind   TEXT NOT NULL,       -- unit | person
     item_id     TEXT NOT NULL,
     item_type   TEXT NOT NULL,       -- resource_type or speciality
-    incident_id TEXT,
-    response_id TEXT,
+    incident_id INTEGER,
+    response_id INTEGER,
     detail      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS incident_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    incident_id TEXT NOT NULL REFERENCES incidents(incident_id),
+    incident_id INTEGER NOT NULL REFERENCES incidents(incident_id),
     ts          TEXT NOT NULL,
     kind        TEXT NOT NULL,
     text        TEXT NOT NULL
@@ -147,8 +151,8 @@ CREATE TABLE IF NOT EXISTS incident_log (
 
 CREATE TABLE IF NOT EXISTS conflicts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    response_id  TEXT NOT NULL REFERENCES responses(response_id),
-    incident_id  TEXT NOT NULL REFERENCES incidents(incident_id),  -- for 'preempted': the incident that lost the unit
+    response_id  INTEGER NOT NULL REFERENCES responses(response_id),
+    incident_id  INTEGER NOT NULL REFERENCES incidents(incident_id),  -- for 'preempted': the incident that lost the unit
     layer        TEXT NOT NULL,                       -- hard | soft | preempted
     payload_json TEXT NOT NULL,
     created_at   TEXT NOT NULL
@@ -348,21 +352,59 @@ class Database:
     # Incident DB
     # ------------------------------------------------------------------ #
 
-    def insert_incident(self, incident: Incident, status: str = "pending", duplicate_of: str | None = None) -> None:
-        """Register an incident. Raises sqlite3.IntegrityError if the id exists."""
+    def next_id(self, table: str, column: str, when: datetime | None = None) -> int:
+        """Next YYYYMMDDNNNNNN id for the day (callers hold the ingest or commit lock)."""
+        day = int((when or _now()).astimezone(timezone.utc).strftime("%Y%m%d")) * 1_000_000
+        top = self._conn.execute(f"SELECT MAX({column}) FROM {table} WHERE {column} BETWEEN ? AND ?",
+                                 (day, day + 999_999)).fetchone()[0]
+        return (top or day) + 1
+
+    def insert_incident(self, incident: Incident, triage: Triage, status: str = "pending",
+                        duplicate_of: int | None = None) -> int:
+        """Register a canonical incident with its triage. Assigns incident_id if missing. Returns it."""
+        if incident.incident_id is None:
+            incident.incident_id = self.next_id("incidents", "incident_id", incident.received_at)
         with self.tx() as c:
             c.execute(
                 """
-                INSERT INTO incidents (incident_id, received_at, category, severity, lat, lon, status, duplicate_of, incident_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO incidents (incident_id, received_at, channel, category, severity, lat, lon, place, status,
+                                       duplicate_of, incident_json, triage_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (incident.incident_id, _iso(incident.received_at), incident.category, incident.severity,
-                 incident.location.lat, incident.location.lon, status, duplicate_of, incident.model_dump_json()),
+                (incident.incident_id, _iso(incident.received_at), incident.channel, triage.category, triage.severity,
+                 triage.lat, triage.lon, triage.place, status, duplicate_of, incident.model_dump_json(),
+                 triage.model_dump_json()),
             )
             if duplicate_of:
                 c.execute("UPDATE incidents SET report_count = report_count + 1 WHERE incident_id = ?", (duplicate_of,))
+        return incident.incident_id
 
-    def set_status(self, incident_id: str, status: IncidentStatus | str) -> None:
+    def merge_incident(self, child_id: int, parent_id: int) -> int:
+        """Fold a report into an earlier incident. Follows chains to the root and moves any reports
+        already merged into the child. Returns the root id."""
+        root = parent_id
+        seen = {child_id}
+        while True:
+            r = self._conn.execute("SELECT duplicate_of FROM incidents WHERE incident_id = ?", (root,)).fetchone()
+            if not r or r["duplicate_of"] is None or r["duplicate_of"] in seen:
+                break
+            seen.add(root)
+            root = r["duplicate_of"]
+        if root == child_id:
+            raise ValueError("cannot merge an incident into itself")
+        with self.tx() as c:
+            moved = c.execute("SELECT COUNT(*) FROM incidents WHERE duplicate_of = ?", (child_id,)).fetchone()[0]
+            c.execute("UPDATE incidents SET duplicate_of = ? WHERE duplicate_of = ?", (root, child_id))
+            c.execute("UPDATE incidents SET status = 'merged', duplicate_of = ?, report_count = 1 WHERE incident_id = ?",
+                      (root, child_id))
+            c.execute("UPDATE incidents SET report_count = report_count + ? WHERE incident_id = ?", (1 + moved, root))
+        return root
+
+    def set_dedup(self, incident_id: int, decision) -> None:
+        with self.tx() as c:
+            c.execute("UPDATE incidents SET dedup_json = ? WHERE incident_id = ?", (decision.model_dump_json(), incident_id))
+
+    def set_status(self, incident_id: int, status: IncidentStatus | str) -> None:
         status = IncidentStatus(status).value
         col = {"dispatched": "dispatched_at", "backlog": "completed_at", "closed": "closed_at"}.get(status)
         with self.tx() as c:
@@ -371,23 +413,33 @@ class Database:
             else:
                 c.execute("UPDATE incidents SET status = ? WHERE incident_id = ?", (status, incident_id))
 
-    def recent_incidents(self, within_minutes: float, statuses: tuple[str, ...] = ("pending", "dispatched", "backlog")) -> list[dict]:
-        """Incidents received recently that a new report could duplicate (for de-duplication)."""
+    def recent_incidents(self, within_minutes: float,
+                         statuses: tuple[str, ...] = ("pending", "dispatched", "backlog", "merged")) -> list[dict]:
+        """Canonical incidents received recently that a new report could duplicate (for MiniLM clustering)."""
         since = _iso(_now() - timedelta(minutes=within_minutes))
         marks = ",".join("?" * len(statuses))
         rows = self._conn.execute(
-            f"SELECT incident_id, status, report_count, incident_json FROM incidents WHERE status IN ({marks}) AND received_at >= ?",
+            f"SELECT incident_id, status, duplicate_of, report_count, incident_json, triage_json FROM incidents "
+            f"WHERE status IN ({marks}) AND received_at >= ? ORDER BY received_at",
             (*statuses, since),
         ).fetchall()
-        return [{"incident_id": r["incident_id"], "status": r["status"], "report_count": r["report_count"],
-                 "incident": Incident.model_validate_json(r["incident_json"])} for r in rows]
+        return [{"incident_id": r["incident_id"], "status": r["status"], "duplicate_of": r["duplicate_of"],
+                 "report_count": r["report_count"], "incident": Incident.model_validate_json(r["incident_json"]),
+                 "triage": Triage.model_validate_json(r["triage_json"])} for r in rows]
+
+    def get_case(self, incident_id: int) -> Case | None:
+        r = self._conn.execute("SELECT incident_json, triage_json FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        if not r:
+            return None
+        return Case(incident=Incident.model_validate_json(r["incident_json"]), triage=Triage.model_validate_json(r["triage_json"]))
 
     def incidents(self, status: IncidentStatus | str | None = None) -> list[dict]:
         """Incidents with their latest response id and units still committed."""
         q = """
             SELECT i.incident_id, i.received_at, i.category, i.severity, i.lat, i.lon, i.status,
                    i.duplicate_of, i.report_count, i.dispatched_at, i.completed_at, i.closed_at,
-                   json_extract(i.incident_json, '$.location.address') AS address,
+                   COALESCE(json_extract(i.incident_json, '$.location.address'),
+                            json_extract(i.incident_json, '$.location.landmark'), i.place) AS address,
                    (SELECT r.response_id FROM responses r WHERE r.incident_id = i.incident_id
                     ORDER BY r.created_at DESC LIMIT 1) AS latest_response_id,
                    COUNT(a.id) AS units_committed,
@@ -406,12 +458,14 @@ class Database:
         """Incidents that still hold units (scheduling / pre-emption context)."""
         return [i for i in self.incidents() if i["units_committed"]]
 
-    def get_incident(self, incident_id: str) -> dict | None:
+    def get_incident(self, incident_id: int) -> dict | None:
         r = self._conn.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
         if not r:
             return None
         d = dict(r)
         d["incident"] = json.loads(d.pop("incident_json"))
+        d["triage"] = json.loads(d.pop("triage_json"))
+        d["dedup"] = json.loads(d.pop("dedup_json")) if d.get("dedup_json") else None
         d["responses"] = [x["response_id"] for x in self.responses(incident_id)]
         d["merged_reports"] = [
             {"incident_id": x["incident_id"], "received_at": x["received_at"],
@@ -424,12 +478,12 @@ class Database:
 
     # ---- incident log ------------------------------------------------------ #
 
-    def add_log(self, incident_id: str, kind: str, text: str, ts: datetime | None = None) -> None:
+    def add_log(self, incident_id: int, kind: str, text: str, ts: datetime | None = None) -> None:
         with self.tx() as c:
             c.execute("INSERT INTO incident_log (incident_id, ts, kind, text) VALUES (?, ?, ?, ?)",
                       (incident_id, _iso(ts or _now()), kind, text))
 
-    def incident_log(self, incident_id: str) -> list[dict]:
+    def incident_log(self, incident_id: int) -> list[dict]:
         rows = self._conn.execute("SELECT ts, kind, text FROM incident_log WHERE incident_id = ? ORDER BY ts, id",
                                   (incident_id,)).fetchall()
         return [dict(r) for r in rows]
@@ -458,7 +512,7 @@ class Database:
                           (now, event, m["person_id"], m["speciality"], u["incident_id"], u["response_id"], u["callsign"]))
         return [dict(u) for u in units]
 
-    def _close_if_clear(self, c: sqlite3.Connection, incident_id: str) -> bool:
+    def _close_if_clear(self, c: sqlite3.Connection, incident_id: int) -> bool:
         left = c.execute("SELECT COUNT(*) FROM allocations WHERE incident_id = ? AND released_at IS NULL", (incident_id,)).fetchone()[0]
         status = c.execute("SELECT status FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
         if left == 0 and status and status[0] == "backlog":
@@ -477,7 +531,7 @@ class Database:
             self.add_log(iid, "closed", "All units back in service. Incident closed.")
         return released
 
-    def close_incident(self, incident_id: str) -> int:
+    def close_incident(self, incident_id: int) -> int:
         """Release every unit and crew member of an incident and close it. Returns units released."""
         now = _iso(_now())
         with self.tx() as c:
@@ -492,7 +546,7 @@ class Database:
                 self._close_if_clear(c, u["incident_id"])
         return bool(released)
 
-    def ledger(self, limit: int = 200, incident_id: str | None = None) -> list[dict]:
+    def ledger(self, limit: int = 200, incident_id: int | None = None) -> list[dict]:
         q, args = "SELECT * FROM inventory_ledger", []
         if incident_id:
             q += " WHERE incident_id = ?"
@@ -504,7 +558,7 @@ class Database:
     # Response DB
     # ------------------------------------------------------------------ #
 
-    def record_response(self, incident: Incident, resp: IncidentResponse) -> None:
+    def record_response(self, incident: Case, resp: IncidentResponse) -> None:
         """Write CR's final response atomically: units, crews, ledger, conflicts; incident -> dispatched.
 
         A 'failed' response (nothing dispatched) is stored but leaves the incident pending.
@@ -512,6 +566,8 @@ class Database:
         if resp.incident_id != incident.incident_id:
             raise ValueError(f"response {resp.response_id} belongs to {resp.incident_id}, not {incident.incident_id}")
         now = _now()
+        if resp.response_id is None:
+            resp.response_id = self.next_id("responses", "response_id")
         rid, iid = resp.response_id, resp.incident_id
         durations = {}
         for r in resp.agent_responses:
@@ -582,7 +638,7 @@ class Database:
             c.execute("UPDATE responses SET response_json = ?, status = ? WHERE response_id = ?",
                       (resp.model_dump_json(), resp.status, resp.response_id))
 
-    def responses(self, incident_id: str | None = None) -> list[dict]:
+    def responses(self, incident_id: int | None = None) -> list[dict]:
         q = "SELECT response_id, incident_id, created_at, status, decided_by, cr_executed_by FROM responses"
         args: tuple = ()
         if incident_id:
@@ -590,11 +646,11 @@ class Database:
             args = (incident_id,)
         return [dict(r) for r in self._conn.execute(q + " ORDER BY created_at", args).fetchall()]
 
-    def get_response(self, response_id: str) -> dict | None:
+    def get_response(self, response_id: int) -> dict | None:
         r = self._conn.execute("SELECT response_json FROM responses WHERE response_id = ?", (response_id,)).fetchone()
         return json.loads(r["response_json"]) if r else None
 
-    def conflict_log(self, incident_id: str | None = None, response_id: str | None = None) -> list[dict]:
+    def conflict_log(self, incident_id: int | None = None, response_id: int | None = None) -> list[dict]:
         q, conds, args = "SELECT * FROM conflicts", [], []
         if incident_id:
             conds.append("incident_id = ?")

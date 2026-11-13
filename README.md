@@ -6,7 +6,7 @@ Urban Response Research: agentic multi-agency incident response for Sheffield, r
 The loop runs from report to backlog with no human step.
 
 ```
-report ──► 0. INGEST (Qwen)       register + duplicate check against recent incidents
+report ──► 0. INGEST              canonical incident → numeric id → Qwen triage → MiniLM clustering
               │  duplicate ──► merged into the existing incident, logged, nothing dispatched
               │  related   ──► dispatched, with the nearby incident passed to the agents as context
               ▼
@@ -41,15 +41,22 @@ personnel (speciality, station, on_shift)   inventory_ledger (dispatched / reass
 incident_log (plain-language timeline per incident)
 ```
 
-Incident status: `pending` → `dispatched` → `backlog` → `closed`. A duplicate report becomes `merged`.
+Incident status: `pending` → `dispatched` → `backlog` → `closed`. A duplicate report becomes `merged`, with `duplicate_of` pointing at the incident it joined.
 
-**Duplicate detection** ([dedup.py](urban_response/dedup.py)) scores each new report against incidents from the last hour within 500 m:
-`0.35·proximity + 0.20·time + 0.30·category + 0.15·wording`.
-- **Duplicate (score ≥ 0.72):** merged into the existing incident.
-- **Borderline (0.50–0.72):** Qwen decides. It is told to prefer "related" over "duplicate" when lives may be at stake.
-- **Lower but nearby:** treated as related.
+**Canonical incident.** [examples/incident.schema.json](examples/incident.schema.json) is the incident for the whole pipeline: intake, storage, de-duplication, agents and responses all use it. `incident_id` is a numeric YYYYMMDDNNNNNN assigned by the database on ingest, and responses get a numeric `response_id` in the same format. The incident is never rewritten. What the pipeline derives from it lives in a separate **triage** object, produced by Qwen at intake with rules as the fallback and as a check:
+- `category` and `severity`;
+- coordinates, taken from caller GPS first, then a built-in Sheffield gazetteer (offline), then Qwen's estimate, then the city centre (flagged in the log);
+- counts of casualties and trapped people, which can never be lower than what the caller reported.
 
-Ingestion is atomic, so two callers ringing in the same instant can't both trigger a dispatch. If a merged report is worse than the original (higher severity, more casualties), that is flagged in the log. Re-assessing a live incident is a later feature.
+Agents are shown `{incident, triage}`, and every response carries both.
+
+**Duplicate detection: MiniLM proposes, the agent decides.** [incident_cluster_handoff.py](incident_cluster_handoff.py), Joshua's MiniLM pipeline from `origin/main`, is vendored byte-for-byte unchanged. It runs on every report with `all-MiniLM-L6-v2` embeddings, location, time and vehicle-registration adjustments, and complete-linkage clustering at threshold **0.85**. [dedup.py](urban_response/dedup.py) feeds it one representative report per live incident (the earliest with caller GPS) plus the new report. It returns MiniLM's proposal and the candidate incidents: those MiniLM clustered the report with, plus active incidents within 500 m that it didn't.
+- **Final call:** Qwen, the intake agent, decides between `duplicate` (merged, nothing dispatched), `related` (dispatched separately, with the neighbour as context) and `new`. It is told to merge only when confident; if the reports are probably different incidents, it dispatches separately. It can also merge reports MiniLM kept apart, such as two callers who name different landmarks for the same block.
+- **No candidates:** no agent call is made.
+- **Fallback:** in rules-only mode, or if the agent fails or picks an incident outside the candidates, MiniLM's verdict stands, with the category guard (`UR_DEDUP_CATEGORY_GUARD`) refusing merges across clearly different incident types.
+- **Merges:** reports only merge into earlier incidents, and a report merged into one that later merges elsewhere moves to the root.
+- **Audit:** each report stores its decision (MiniLM's proposal, the candidates shown, the final verdict and who made it) on the incident row.
+- **Offline use:** run `urban-response prefetch` once, then `HF_HUB_OFFLINE=1`. `UR_MINILM_MODEL` can point to a local model directory.
 
 **Crews** ([resources.py](urban_response/resources.py)): every vehicle type needs specific specialities (for example a fire engine needs 1 crew commander and 3 firefighters; an ARV needs 2 firearms officers). The allocator crews each vehicle from its own station first, then from the nearest stations. A vehicle that can't be crewed is not sent. A shortfall of people is its own hard conflict (`crew_shortfall`).
 

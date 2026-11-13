@@ -8,6 +8,7 @@
   urban-response seed [--force]     (re)seed the Resource DB
   urban-response serve              start the HTTP API
   urban-response trace FILE         print a readable transcript of a --trace file
+  urban-response prefetch           cache the MiniLM dedup model (then HF_HUB_OFFLINE=1 works)
 """
 
 from __future__ import annotations
@@ -27,10 +28,13 @@ from .schemas import Incident, IncidentStatus, PipelineResult
 from .seed import seed
 
 
-def print_result(db: Database, incident: Incident, result: PipelineResult) -> None:
-    print(f"\n{'=' * 78}\n{incident.incident_id}  {incident.category}  sev {incident.severity}  {incident.location.address}")
+def print_result(db: Database, report: Incident, result: PipelineResult) -> None:
+    incident = db.get_case(result.incident_id)
+    t = incident.triage
+    print(f"\n{'=' * 78}\n{incident.incident_id}  [{report.channel}] {report.description[:70]}")
+    print(f"Triage [{t.executed_by.value}]: {t.category} sev {t.severity} at {t.place} ({t.location_resolved_by})")
     d = result.dedup
-    print(f"Ingest [{d.executed_by.value}]: {d.verdict.value}" + (f" -> {d.match_incident_id} (score {d.score}, {d.distance_m:.0f} m)" if d.match_incident_id else "") + f"  {d.reason}")
+    print(f"Dedup [{d.executed_by.value}]: {d.verdict.value}" + (f" -> {d.match_incident_id}" if d.match_incident_id else "") + f"  {d.reason}")
     if result.outcome == "merged":
         print("  merged; nothing dispatched")
         return
@@ -122,6 +126,7 @@ def main() -> None:
     i.add_argument("file", type=Path)
     i.add_argument("--json", action="store_true")
     i.add_argument("--trace", type=Path, help="Append every LLM call (prompt + reply) to this JSONL file")
+    sub.add_parser("prefetch", help="Download/cache the MiniLM model (run once before going offline)")
     b = sub.add_parser("burst")
     b.add_argument("file", type=Path, nargs="?", default=ROOT / "scenarios" / "burst_park_hill.json")
     b.add_argument("--json", action="store_true")
@@ -144,6 +149,12 @@ def main() -> None:
         os.environ["UR_TRACE_FILE"] = str(args.trace)
     settings = get_settings()
 
+    if args.cmd == "prefetch":
+        from . import dedup
+
+        dedup.load_model()
+        print(f"MiniLM ready: {dedup.MODEL}. Set HF_HUB_OFFLINE=1 to run without internet.")
+        return
     if args.cmd == "trace":
         print_trace(args.file, args.full)
         return

@@ -13,6 +13,10 @@ if [[ "${LLM_MODE:-mock}" == "live" ]]; then
       || { echo "Model server not answering at $url/models"; exit 1; }
   done
 fi
+if [[ "${HF_HUB_OFFLINE:-0}" == "1" ]]; then
+  HF_HUB_OFFLINE=1 uv run python -c "from huggingface_hub import snapshot_download as s; import os; m=os.getenv('UR_MINILM_MODEL','sentence-transformers/all-MiniLM-L6-v2'); os.path.isdir(m) or s(m, local_files_only=True)" 2>/dev/null \
+    || { echo "MiniLM is not cached; run 'uv run urban-response prefetch' once while online (or set HF_HUB_OFFLINE=0)"; exit 1; }
+fi
 [[ -n "${UR_API_TOKEN:-}" ]] || echo "WARNING: UR_API_TOKEN is empty; anyone reaching the tunnel can run the pipeline."
 
 exec uv run urban-response serve --host "${SURU_HOST:-0.0.0.0}" --port "${SURU_PORT:-8080}"

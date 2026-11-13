@@ -226,32 +226,28 @@ body.brief { background: var(--paper); color: var(--ink); }
       <form class="form" id="incForm">
         <label>Preset <select id="preset"></select></label>
         <div class="row">
-          <label>Category
-            <select id="category">
-              <option>rtc</option><option>structure_fire</option><option>high_rise_fire</option><option>vehicle_fire</option>
-              <option>hazmat</option><option>gas_leak</option><option>flood</option><option>medical</option>
-              <option>cardiac_arrest</option><option>assault</option><option>stabbing</option><option>firearms</option>
-              <option>public_disorder</option>
-            </select>
+          <label>Channel
+            <select id="channel"><option>999</option><option>112</option><option>text</option><option>app</option><option>alarm</option></select>
           </label>
-          <label>Severity (1–5) <input id="severity" type="number" min="1" max="5" value="3"></label>
+          <label>Caller says severity <input id="callerSeverity" placeholder="e.g. serious"></label>
         </div>
-        <label>Description <textarea id="description"></textarea></label>
+        <label>What the caller said <textarea id="description"></textarea></label>
         <div class="row">
           <label>Address <input id="address"></label>
-          <label>District <input id="district"></label>
+          <label>Landmark <input id="landmark"></label>
         </div>
         <div class="row">
-          <label>Lat <input id="lat" type="number" step="0.0001"></label>
-          <label>Lon <input id="lon" type="number" step="0.0001"></label>
+          <label>Lat (optional) <input id="lat" type="number" step="0.0001"></label>
+          <label>Lon (optional) <input id="lon" type="number" step="0.0001"></label>
         </div>
-        <span class="hint">Click the map to set the location.</span>
+        <span class="hint">Click the map for caller GPS, or leave blank: triage places it from the address or landmark.</span>
         <div class="row3">
-          <label>Injured <input id="casualties" type="number" min="0" value="0"></label>
-          <label>Trapped <input id="trapped" type="number" min="0" value="0"></label>
+          <label>Injured <input id="casualties" type="number" min="0"></label>
+          <label>Trapped <input id="trapped" type="number" min="0"></label>
           <label class="check" style="align-self:end"><input id="weapons" type="checkbox"> Weapons</label>
         </div>
         <label>Hazards (comma separated) <input id="hazards"></label>
+        <span class="hint">Category and severity are not entered: Qwen derives them at intake (triage).</span>
         <button class="btn primary" id="runBtn" type="submit">Send report</button>
       </form>
     </div>
@@ -271,7 +267,7 @@ body.brief { background: var(--paper); color: var(--ink); }
     <div class="card">
       <h2>Pipeline <span class="right mono" id="clock"></span></h2>
       <div class="rail">
-        <div class="node qwen" id="n-ingest"><div class="n1"><span class="dot"></span>Ingest</div><div class="n2" id="n-ingest-2">dedup</div></div>
+        <div class="node qwen" id="n-ingest"><div class="n1"><span class="dot"></span>Triage + dedup</div><div class="n2" id="n-ingest-2">Qwen · MiniLM</div></div>
         <div class="node qwen" id="n-route"><div class="n1"><span class="dot"></span>Route</div><div class="n2" id="n-route-2">Qwen</div></div>
         <div class="node nemo agents-node" id="n-agents">
           <div class="a"><span><span class="dot" id="d-police"></span>A1 police</span><span id="n-police-2"></span></div>
@@ -356,6 +352,7 @@ const briefUrl = (id) => `${location.pathname}?brief=${encodeURIComponent(id)}`;
 
 function byBadge(by, role) {
   if (by === "fallback") return h("span", { class: "by fallback", title: "The model call failed; deterministic rules filled in" }, "fallback rules");
+  if (by === "minilm") return h("span", { class: "by rules", title: "incident_cluster_handoff.py: MiniLM embeddings + complete-linkage clustering, threshold 0.85" }, "MiniLM clustering");
   if (by === "mock" || by === "rules" || by === "floor") return h("span", { class: "by rules" }, by === "floor" ? "life-safety floor" : "rules");
   const llm = CONFIG.live_label ? ` · ${CONFIG.live_label}` : "";
   if (by === "qwen") return h("span", { class: "by qwen" }, `Qwen role${llm}`);
@@ -478,7 +475,10 @@ async function startJob(incident) {
   const es = new EventSource(`${API_BASE}/api/jobs/${job.job_id}/events`);
   const names = ["ingested", "merged", "routing", "routed", "agent_start", "agent_done", "conflicts_detected", "cr_start", "cr_decided", "committed", "evaluating", "evaluated", "completed", "error"];
   for (const n of names) es.addEventListener(n, (m) => {
-    JOBS[job.job_id].events.push(JSON.parse(m.data));
+    if (!m.data) return;  // the browser's own "error" event (connection closed) carries no data
+    const ev = JSON.parse(m.data);
+    if (n === "ingested") JOBS[job.job_id].incident_id = ev.data.incident.incident_id;
+    JOBS[job.job_id].events.push(ev);
     renderJobs();
     if (selected?.kind === "job" && selected.id === job.job_id) renderJob(job.job_id);
     if (n === "committed" || n === "completed" || n === "merged") refreshState();
@@ -505,7 +505,7 @@ function setAgent(a, state, text) {
   const t = $(`n-${a}-2`); if (t) t.textContent = text ?? "";
 }
 function resetRail() {
-  const labels = { "n-ingest": "dedup", "n-route": "Qwen", "n-cr": "final call", "n-dispatch": "crews", "n-eval": "Qwen", "n-done": "finalise" };
+  const labels = { "n-ingest": "Qwen · MiniLM", "n-route": "Qwen", "n-cr": "final call", "n-dispatch": "crews", "n-eval": "Qwen", "n-done": "finalise" };
   for (const [id, t] of Object.entries(labels)) setNode(id, "", t);
   for (const a of ["police", "ambulance", "fire"]) setAgent(a, "", "");
 }
@@ -521,14 +521,25 @@ function stage(kind, title, meta, ...body) {
 }
 const st = (by) => (by === "fallback" ? "fallback" : "done");
 
-function renderIngest(inc, d, t) {
+function renderIngest(inc, tri, d, t) {
   const verdictText = { new: "New incident", duplicate: "Duplicate report", related: "Separate incident nearby" }[d.verdict];
-  return stage("qwen", "Ingest and duplicate check", [h("span", { class: "meta" }, t != null ? `${t}s` : ""), byBadge(d.executed_by)],
-    h("div", {}, h("b", {}, `${inc.incident_id} · ${nice(inc.category)} · sev ${inc.severity}`), ` · ${inc.location.address}`),
-    h("div", { class: "rationale" }, inc.description),
-    h("div", { style: "margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap" }, h("span", { class: "pill " + d.verdict }, verdictText),
-      d.match_incident_id ? h("button", { class: "btn small", onclick: () => openIncident(d.match_incident_id) }, d.match_incident_id) : null,
-      d.distance_m != null ? h("span", { class: "hint" }, `${Math.round(d.distance_m)} m · ${d.minutes_apart} min apart · score ${d.score}`) : null),
+  const loc = inc.location || {};
+  return stage("qwen", "Intake: canonical report, triage, duplicate check", h("span", { class: "meta" }, t != null ? `${t}s` : ""),
+    h("div", {}, h("b", {}, `${inc.incident_id} · ${inc.channel}`), ` · ${loc.address || loc.landmark || ""}`,
+      loc.lat != null ? h("span", { class: "hint" }, ` · caller GPS`) : h("span", { class: "hint" }, " · no GPS")),
+    h("div", { class: "rationale" }, `“${inc.description}”`),
+    tri ? h("div", { style: "margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap" }, byBadge(tri.executed_by),
+      h("b", {}, `${nice(tri.category)} · severity ${tri.severity}`), h("span", { class: "hint" }, "triage"),
+      h("span", { class: "hint" }, `${tri.casualties} injured · ${tri.trapped} trapped${tri.weapons ? " · weapons" : ""} · placed at ${tri.place || "?"} (${tri.location_resolved_by})`)) : null,
+    tri?.rationale ? h("div", { class: "rationale" }, tri.rationale) : null,
+    h("div", { style: "margin-top:6px; display:flex; gap:8px; align-items:center; flex-wrap:wrap" }, byBadge(d.executed_by), h("span", { class: "pill " + d.verdict }, verdictText),
+      d.match_incident_id ? h("button", { class: "btn small", onclick: () => openIncident(d.match_incident_id) }, String(d.match_incident_id)) : null,
+      h("span", { class: "hint" }, [d.cluster_size > 1 ? `cluster of ${d.cluster_size}` : null, d.score ? `distance ${d.score}` : null,
+        d.distance_m != null ? `${Math.round(d.distance_m)} m` : null, d.minutes_apart != null ? `${d.minutes_apart} min apart` : null].filter(Boolean).join(" · "))),
+    d.minilm_verdict ? h("div", { class: "hint", style: "margin-top:4px" },
+      `MiniLM proposed: ${d.minilm_verdict}${d.minilm_match_incident_id ? " → " + d.minilm_match_incident_id : ""}` +
+      (d.executed_by === "qwen" ? (d.minilm_verdict === d.verdict ? " · agent agreed" : " · agent overruled it") : " · MiniLM verdict stands") +
+      (d.candidates?.length ? ` · ${d.candidates.length} candidate incident(s) reviewed` : "")) : null,
     h("div", { class: "rationale" }, d.reason));
 }
 function renderRouting(r, t) {
@@ -631,7 +642,9 @@ function renderJob(id) {
     const d = e.data;
     switch (e.event) {
       case "ingested":
-        inc = d.incident; setNode("n-ingest", st(d.dedup.executed_by), d.dedup.verdict); out.append(renderIngest(inc, d.dedup, e.t)); break;
+        inc = { ...d.incident, location: { ...d.incident.location, lat: d.triage.lat, lon: d.triage.lon } };
+        setNode("n-ingest", st(d.triage.executed_by), `${nice(d.triage.category)} · ${d.dedup.verdict}`);
+        out.append(renderIngest(d.incident, d.triage, d.dedup, e.t)); break;
       case "merged":
         for (const n of ["n-route", "n-cr", "n-dispatch", "n-eval"]) setNode(n, "skipped", "-");
         setNode("n-done", "done", "merged");
@@ -668,7 +681,7 @@ async function openIncident(id) {
   selected = { kind: "incident", id }; renderJobs(); stopClock(); $("clock").textContent = "";
   const row = await api(`/incidents/${id}`);
   const out = $("output"); out.replaceChildren(); resetRail();
-  const inc = row.incident;
+  const inc = { ...row.incident, location: { ...row.incident.location, lat: row.triage.lat, lon: row.triage.lon } };
   const rid = row.responses[row.responses.length - 1];
   if (!rid) {
     out.append(stage("store", `${id}`, h("span", { class: "pill " + row.status }, row.status), h("div", { class: "rationale" }, inc.description),
@@ -676,9 +689,9 @@ async function openIncident(id) {
     return;
   }
   const r = await api(`/responses/${rid}`);
-  if (r.dedup) { out.append(renderIngest(inc, r.dedup)); setNode("n-ingest", "done", r.dedup.verdict); }
+  if (r.dedup) { out.append(renderIngest(row.incident, r.triage || row.triage, r.dedup)); setNode("n-ingest", "done", r.dedup.verdict); }
   if (row.merged_reports.length) out.append(h("div", { class: "note" }, `${row.merged_reports.length} further report(s) merged into this incident: ` +
-    row.merged_reports.map((m) => `${m.incident_id} (${m.incident.location.address})`).join(", ")));
+    row.merged_reports.map((m) => `${m.incident_id} (${m.incident.channel}: “${m.incident.description.slice(0, 60)}…”)`).join("; ")));
   out.append(renderRouting(r.routing)); setNode("n-route", "done", r.routing.lead_agency);
   out.append(stage("nemo", "Specialist agents", h("span", { class: "meta" }, `${r.agent_responses.length} agents`), h("div", { class: "agents" }, r.agent_responses.map(agentCard))));
   for (const a of ["police", "ambulance", "fire"]) { const ar = r.agent_responses.find((x) => x.agency === a); setAgent(a, ar ? st(ar.executed_by) : "skipped", ar ? "done" : "not tasked"); }
@@ -693,18 +706,26 @@ async function openIncident(id) {
 }
 
 // =============================== intake =====================================
+function numOrNull(id) { const v = $(id).value.trim(); return v === "" ? null : +v; }
 function incidentFromForm() {
+  // Canonical incident (examples/incident.schema.json). incident_id is assigned by the database.
+  const lat = numOrNull("lat"), lon = numOrNull("lon");
   return {
-    category: $("category").value, description: $("description").value || "No description",
-    location: { lat: +$("lat").value, lon: +$("lon").value, address: $("address").value, district: $("district").value },
-    severity: +$("severity").value, casualties_reported: +$("casualties").value || 0, people_trapped: +$("trapped").value || 0,
-    weapons_involved: $("weapons").checked, hazards: $("hazards").value.split(",").map((s) => s.trim()).filter(Boolean),
+    channel: $("channel").value,
+    location: { address: $("address").value || null, landmark: $("landmark").value || null, lat, lon,
+                location_source: lat != null && lon != null ? "caller_gps" : "caller_stated" },
+    description: $("description").value.trim(),
+    caller_reported_severity: $("callerSeverity").value || null,
+    casualties_reported: numOrNull("casualties"), people_trapped_reported: numOrNull("trapped"),
+    hazards_reported: $("hazards").value.split(",").map((s) => s.trim()).filter(Boolean),
+    weapons_mentioned: $("weapons").checked,
   };
 }
 async function sendReport(ev) {
   ev.preventDefault();
   const incident = incidentFromForm();
-  if (!incident.location.lat || !incident.location.lon) return alertBox("Set a location (lat/lon) or click the map.");
+  if (!incident.description) return alertBox("Describe what the caller reported.");
+  if (!incident.location.address && !incident.location.landmark && incident.location.lat == null) return alertBox("Give an address, a landmark, or click the map.");
   try { const id = await startJob(incident); selectJob(id); } catch (e) { alertBox(e.message); }
 }
 async function runBurst() {
@@ -723,11 +744,12 @@ async function runBurst() {
 function alertBox(msg) { $("output").prepend(h("div", { class: "banner" }, msg)); }
 function fillPreset(i) {
   const s = SCENARIOS[i]; if (!s) return;
-  $("category").value = s.category; $("severity").value = s.severity; $("description").value = s.description;
-  $("address").value = s.location.address || ""; $("district").value = s.location.district || "";
-  $("lat").value = s.location.lat; $("lon").value = s.location.lon;
-  $("casualties").value = s.casualties_reported || 0; $("trapped").value = s.people_trapped || 0;
-  $("weapons").checked = !!s.weapons_involved; $("hazards").value = (s.hazards || []).join(", ");
+  $("channel").value = s.channel || "999"; $("callerSeverity").value = s.caller_reported_severity || "";
+  $("description").value = s.description;
+  $("address").value = s.location.address || ""; $("landmark").value = s.location.landmark || "";
+  $("lat").value = s.location.lat ?? ""; $("lon").value = s.location.lon ?? "";
+  $("casualties").value = s.casualties_reported ?? ""; $("trapped").value = s.people_trapped_reported ?? "";
+  $("weapons").checked = !!s.weapons_mentioned; $("hazards").value = (s.hazards_reported || []).join(", ");
   showPick();
 }
 function setMode(m) { MODE = m; $("modeLive").setAttribute("aria-pressed", m === "live"); $("modeMock").setAttribute("aria-pressed", m === "mock"); }
@@ -740,7 +762,7 @@ async function bootConsole() {
   setMode(CONFIG.live_available ? "live" : "mock");
   $("modeLive").onclick = () => setMode("live"); $("modeMock").onclick = () => setMode("mock");
   SCENARIOS = await api("/api/scenarios");
-  $("preset").replaceChildren(...SCENARIOS.map((s, i) => h("option", { value: i }, `${nice(s.category)} · sev ${s.severity} · ${s.location.address}`)));
+  $("preset").replaceChildren(...SCENARIOS.map((s, i) => h("option", { value: i }, `${s.channel || "999"} · ${s.location.address || s.location.landmark} · ${s.description.slice(0, 40)}…`)));
   $("preset").onchange = (e) => fillPreset(+e.target.value);
   fillPreset(0);
   BURSTS = await api("/api/burst").catch(() => ({}));

@@ -20,7 +20,7 @@ from ..schemas import (
     HardConflict,
     HardConflictKind,
     HardResolution,
-    Incident,
+    Case,
     ResolutionAction,
     ResourceRequest,
     UnitAllocation,
@@ -74,7 +74,7 @@ def crew_demand(items, db: Database) -> dict[str, int]:
     return dict(need)
 
 
-def detect(incident: Incident, responses: list[AgentResponse], db: Database) -> list[HardConflict]:
+def detect(incident: Case, responses: list[AgentResponse], db: Database) -> list[HardConflict]:
     catalogue = db.resource_types()
     conflicts: list[HardConflict] = []
     loc = incident.location
@@ -210,7 +210,7 @@ def resolution_options(conflict: HardConflict, db: Database, demand: dict[str, i
 
 
 def default_resolution(
-    conflict: HardConflict, incident: Incident, db: Database, demand: dict[str, int] | None = None
+    conflict: HardConflict, incident: Case, db: Database, demand: dict[str, int] | None = None
 ) -> HardResolution:
     """Rule-based policy used in mock mode and whenever the orchestrator fails."""
     opts = resolution_options(conflict, db, demand)
@@ -259,7 +259,7 @@ def validate_resolution(
 
 
 def allocate(
-    incident: Incident,
+    incident: Case,
     responses,
     resolutions: list[HardResolution],
     lead: Agency,

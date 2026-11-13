@@ -15,7 +15,7 @@ from ..config import Settings
 from ..db import Database
 from ..kb import KnowledgeBase
 from ..llm import LLMError, chat_json
-from ..schemas import AGENT_ID, AgentResponse, Agency, ExecutedBy, Incident, RoutingDecision
+from ..schemas import AGENT_ID, AgentResponse, Agency, ExecutedBy, Case, RoutingDecision
 from .heuristics import HEURISTICS, AgentDraft
 
 log = logging.getLogger(__name__)
@@ -50,13 +50,14 @@ class SpecialistAgent:
     def allowed_types(self) -> list[str]:
         return sorted(t for t, owner in self.db.resource_types().items() if owner in (self.agency.value, "shared"))
 
-    def build_prompt(self, incident: Incident, routing: RoutingDecision) -> tuple[str, str, list[str]]:
-        query = " ".join([incident.category.replace("_", " "), incident.description, *incident.hazards])
+    def build_prompt(self, incident: Case, routing: RoutingDecision) -> tuple[str, str, list[str]]:
+        query = " ".join([incident.category.replace("_", " "), incident.description, *incident.hazards,
+                          *(p.notes or "" for p in incident.incident.patients)])
         chunks = self.kb.search(query, self.settings.kb_top_k)
         kb_text = "\n\n".join(f"[{c.citation}]\n{c.text}" for c in chunks) or "(no matching guidance)"
         system = PERSONAS[self.agency] + "\n\n" + RULES.format(agency=self.agency.value, types=", ".join(self.allowed_types()))
         context = {
-            "incident": json.loads(incident.model_dump_json()),
+            **incident.prompt_view(),  # canonical incident + triage (+ nearby context)
             "agencies_tasked": [a.value for a in routing.agencies],
             "lead_agency": routing.lead_agency.value,
         }
@@ -65,7 +66,7 @@ class SpecialistAgent:
         user = f"INCIDENT AND CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nKNOWLEDGE BASE:\n{kb_text}"
         return system, user, [c.citation for c in chunks]
 
-    async def respond(self, incident: Incident, routing: RoutingDecision) -> AgentResponse:
+    async def respond(self, incident: Case, routing: RoutingDecision) -> AgentResponse:
         system, user, citations = self.build_prompt(incident, routing)
         latency = None
         if self.settings.live:

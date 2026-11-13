@@ -9,12 +9,12 @@ semantic review.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal
-from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def _now() -> datetime:
@@ -51,6 +51,7 @@ class ExecutedBy(str, Enum):
     fallback = "fallback"  # the model call failed; deterministic rules filled in
     mock = "mock"  # LLM_MODE=mock, no model server involved
     rules = "rules"  # pure code (conflict accounting etc.)
+    minilm = "minilm"  # MiniLM sentence-embedding clustering (incident_cluster_handoff.py)
     floor = "floor"  # life-safety minimum enforced by code over the CR manifest
 
 
@@ -67,8 +68,105 @@ class RequestPriority(int, Enum):
 
 
 # --------------------------------------------------------------------------- #
-# Incident (input)
+# Incident: the canonical intake record (examples/incident.schema.json)
 # --------------------------------------------------------------------------- #
+#
+# This is THE incident. It is what callers, alarm panels and apps send, what is stored in
+# the incident DB, what the MiniLM de-duplicator clusters, and what every agent is shown.
+# It is never rewritten. Everything the pipeline derives from it (category, severity,
+# resolved coordinates) lives in a separate Triage object.
+
+
+class Caller(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    relationship: Literal["witness", "involved", "passer_by", "resident", "third_party"] | None = None
+    on_scene: bool | None = None
+
+
+class IncidentLocation(BaseModel):
+    address: str | None = None
+    landmark: str | None = None
+    lat: float | None = None
+    lon: float | None = None
+    location_source: Literal["caller_gps", "caller_stated", "cell_mast", "alarm_panel"] | None = None
+    location_notes: str | None = None
+
+    @model_validator(mode="after")
+    def _some_place(self):
+        if not (self.address or self.landmark or (self.lat is not None and self.lon is not None)):
+            raise ValueError("location needs an address, a landmark, or lat and lon")
+        return self
+
+
+class Patient(BaseModel):
+    approx_age: str | None = None
+    sex: Literal["male", "female", "unknown"] | None = None
+    conscious: bool | None = None
+    breathing: Literal["normal", "shallow", "none"] | None = None
+    bleeding: bool | None = None
+    notes: str | None = None
+
+
+class PersonOfInterest(BaseModel):
+    role: Literal["suspect", "missing", "victim", "other"]
+    description: str | None = None
+    direction_of_travel: str | None = None
+    armed: bool | None = None
+
+
+class Vehicle(BaseModel):
+    type: str | None = None
+    description: str | None = None
+    registration: str | None = None
+    occupants: int | None = Field(default=None, ge=0)
+
+
+class Incident(BaseModel):
+    """Canonical incident report. Field-for-field the JSON Schema in examples/incident.schema.json."""
+
+    incident_id: int | None = Field(default=None, description="YYYYMMDDNNNNNN, assigned by the database on ingest")
+    received_at: datetime = Field(default_factory=_now)
+    channel: Literal["999", "112", "text", "app", "alarm"] = "999"
+    caller: Caller | None = None
+    location: IncidentLocation
+    description: str = Field(min_length=1)
+    caller_reported_severity: str | None = None
+    casualties_reported: int | None = Field(default=None, ge=0)
+    people_trapped_reported: int | None = Field(default=None, ge=0)
+    patients: list[Patient] = Field(default_factory=list)
+    hazards_reported: list[str] = Field(default_factory=list)
+    weapons_mentioned: bool | None = None
+    persons_of_interest: list[PersonOfInterest] = Field(default_factory=list)
+    vehicles: list[Vehicle] = Field(default_factory=list)
+
+    def canonical_json(self) -> dict:
+        """The record as stored and as shown to agents: schema fields only, nulls kept."""
+        return self.model_dump(mode="json")
+
+
+CATEGORIES = [
+    "rtc", "structure_fire", "high_rise_fire", "vehicle_fire", "hazmat", "gas_leak", "flood", "medical",
+    "cardiac_arrest", "overdose", "fall", "assault", "stabbing", "firearms", "robbery", "public_disorder",
+    "missing_person", "other",
+]
+
+
+class Triage(BaseModel):
+    """What the orchestrator derives from a canonical incident at intake. Never written back into it."""
+
+    category: str = Field(description="One of CATEGORIES")
+    severity: int = Field(ge=1, le=5, description="1 = minor, 5 = major incident")
+    lat: float
+    lon: float
+    location_resolved_by: Literal["caller", "gazetteer", "qwen", "default"] = "caller"
+    place: str = Field(default="", description="Short human place name for logs and briefs")
+    casualties: int = 0
+    trapped: int = 0
+    weapons: bool = False
+    hazards: list[str] = Field(default_factory=list)
+    rationale: str = ""
+    executed_by: ExecutedBy = ExecutedBy.rules
 
 
 class Location(BaseModel):
@@ -78,21 +176,71 @@ class Location(BaseModel):
     district: str = ""
 
 
-class Incident(BaseModel):
-    """Normalised incident as received by the orchestrator."""
+class Case(BaseModel):
+    """Read-only working view used inside the pipeline: canonical incident + triage.
 
-    incident_id: str = Field(default_factory=lambda: f"INC-{uuid4().hex[:8].upper()}")
-    received_at: datetime = Field(default_factory=_now)
-    source: str = "999"
-    category: str = Field(description="e.g. structure_fire, rtc, assault, medical, hazmat, flood")
-    description: str
-    location: Location
-    severity: int = Field(ge=1, le=5, description="1 = minor, 5 = major incident")
-    casualties_reported: int = 0
-    people_trapped: int = 0
-    hazards: list[str] = Field(default_factory=list)
-    weapons_involved: bool = False
-    metadata: dict = Field(default_factory=dict)
+    Downstream code reads the derived fields below; agents are shown prompt_view(), which is
+    the canonical incident plus the triage, never a rewritten incident.
+    """
+
+    incident: Incident
+    triage: Triage
+    context: dict = Field(default_factory=dict, description="e.g. a nearby related incident")
+
+    @property
+    def incident_id(self) -> int:
+        return self.incident.incident_id
+
+    @property
+    def received_at(self) -> datetime:
+        return self.incident.received_at
+
+    @property
+    def description(self) -> str:
+        return self.incident.description
+
+    @property
+    def category(self) -> str:
+        return self.triage.category
+
+    @property
+    def severity(self) -> int:
+        return self.triage.severity
+
+    @property
+    def location(self) -> Location:
+        loc = self.incident.location
+        return Location(lat=self.triage.lat, lon=self.triage.lon,
+                        address=loc.address or loc.landmark or self.triage.place, district=self.triage.place)
+
+    @property
+    def casualties_reported(self) -> int:
+        return self.triage.casualties
+
+    @property
+    def people_trapped(self) -> int:
+        return self.triage.trapped
+
+    @property
+    def hazards(self) -> list[str]:
+        return self.triage.hazards
+
+    @property
+    def weapons_involved(self) -> bool:
+        return self.triage.weapons
+
+    @property
+    def source(self) -> str:
+        return self.incident.channel
+
+    def prompt_view(self) -> dict:
+        out = {"incident": self.incident.canonical_json(), "triage": self.triage.model_dump(mode="json")}
+        if self.context:
+            out["context"] = self.context
+        return out
+
+    def prompt_json(self, indent: int | None = None) -> str:
+        return json.dumps(self.prompt_view(), indent=indent, default=str)
 
 
 # --------------------------------------------------------------------------- #
@@ -101,7 +249,7 @@ class Incident(BaseModel):
 
 
 class RoutingDecision(BaseModel):
-    incident_id: str
+    incident_id: int
     agencies: list[Agency]
     lead_agency: Agency
     rationale: str
@@ -154,7 +302,7 @@ class MissionDetails(BaseModel):
 class AgentResponse(BaseModel):
     agent_id: str
     agency: Agency
-    incident_id: str
+    incident_id: int
     resource_requests: list[ResourceRequest]
     scene_constraints: SceneConstraints
     mission_details: MissionDetails
@@ -242,7 +390,7 @@ class UnitAllocation(BaseModel):
     station: str
     eta_min: float
     requested_by: Agency
-    preempted_from: str | None = None
+    preempted_from: int | None = None
     crew: list[CrewMember] = Field(default_factory=list)
     task: str = ""
 
@@ -259,9 +407,14 @@ class DedupVerdict(str, Enum):
 
 
 class DedupDecision(BaseModel):
-    incident_id: str
+    incident_id: int
     verdict: DedupVerdict
-    match_incident_id: str | None = None
+    match_incident_id: int | None = None
+    method: str = Field(default="minilm", description="minilm = incident_cluster_handoff.py clustering")
+    cluster_size: int = 1
+    minilm_verdict: DedupVerdict | None = Field(default=None, description="What MiniLM proposed")
+    minilm_match_incident_id: int | None = None
+    candidates: list[dict] = Field(default_factory=list, description="Incidents the deciding agent was shown")
     score: float = 0.0
     distance_m: float | None = None
     minutes_apart: float | None = None
@@ -321,15 +474,17 @@ class IncidentResponse(BaseModel):
     points at its incident through incident_id (foreign key).
     """
 
-    response_id: str = Field(default_factory=lambda: f"RSP-{uuid4().hex[:8].upper()}")
-    incident_id: str
+    response_id: int | None = Field(default=None, description="YYYYMMDDNNNNNN, assigned by the database")
+    incident_id: int
     created_at: datetime = Field(default_factory=_now)
     decided_by: str = CR_AGENT_ID
     cr_executed_by: ExecutedBy = ExecutedBy.rules
     cr_rationale: str = ""
+    incident: Incident | None = Field(default=None, description="Canonical incident this response answers (snapshot)")
+    triage: Triage | None = None
     routing: RoutingDecision
     dedup: DedupDecision | None = None
-    related_incidents: list[str] = Field(default_factory=list)
+    related_incidents: list[int] = Field(default_factory=list)
     agent_responses: list[AgentResponse]
     requested_total: dict[str, int] = Field(default_factory=dict, description="What A1-A3 asked for, summed per type")
     manifest: list[ManifestItem] = Field(default_factory=list, description="CR's final declaration")
@@ -345,7 +500,7 @@ class IncidentResponse(BaseModel):
 
 
 class PipelineResult(BaseModel):
-    incident_id: str
+    incident_id: int
     outcome: Literal["dispatched", "merged", "failed"]
     dedup: DedupDecision
     response: IncidentResponse | None = None

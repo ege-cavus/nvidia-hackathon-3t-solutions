@@ -9,15 +9,15 @@ from __future__ import annotations
 from collections import Counter
 
 from .resources import crew_for
-from .schemas import Evaluation, ExecutedBy, Incident, IncidentResponse, RequestPriority
+from .schemas import Evaluation, ExecutedBy, Case, IncidentResponse, RequestPriority
 
 
-def arrival_target_min(agency: str, incident: Incident) -> float:
+def arrival_target_min(agency: str, incident: Case) -> float:
     urgent = incident.severity >= 4 or incident.weapons_involved or incident.category == "cardiac_arrest"
     return {"ambulance": 7 if urgent else 18, "fire": 8, "police": 10 if urgent else 15}.get(agency, 15)
 
 
-def compute_metrics(incident: Incident, r: IncidentResponse) -> dict:
+def compute_metrics(incident: Case, r: IncidentResponse) -> dict:
     manifest_units = sum(m.quantity for m in r.manifest)
     essential_units = sum(m.quantity for m in r.manifest if m.priority == RequestPriority.essential)
     requested_units = sum(r.requested_total.values())
@@ -58,7 +58,7 @@ def grade(score: int) -> str:
     return "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 45 else "F"
 
 
-def rule_evaluation(incident: Incident, r: IncidentResponse, m: dict, headline: str, dek: str) -> Evaluation:
+def rule_evaluation(incident: Case, r: IncidentResponse, m: dict, headline: str, dek: str) -> Evaluation:
     fallback_share = m["rule_fallbacks"] / max(len(r.hard_resolutions), 1)
     score = round(100 * (0.45 * m["essential_fill_rate"] + 0.25 * m["arrival_targets_met"]
                          + 0.15 * m["crew_complete_rate"] + 0.15 * (1 - fallback_share)))

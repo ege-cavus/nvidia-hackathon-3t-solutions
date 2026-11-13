@@ -137,9 +137,12 @@ Ollama alternative: a single server on `:11434/v1` for both models. Set `UR_GUID
 
 **2. Start the API**
 ```bash
+uv sync                                        # large install: sentence-transformers pulls in torch
+uv run urban-response prefetch                 # once, while online: caches the MiniLM dedup model
 cp deploy/dgx/env.example deploy/dgx/.env      # fill model names; UR_API_TOKEN=$(openssl rand -hex 32)
 ./deploy/dgx/start.sh                          # → http://<spark-ip>:8080 on the LAN
 ```
+`.env` sets `HF_HUB_OFFLINE=1`, so the duplicate detector never needs the internet during the demo. `start.sh` refuses to start if the model isn't cached.
 
 **3. Open the tunnel.** Pick one:
 

@@ -16,7 +16,7 @@ from .conftest import make_incident
 
 def resp(agency: Agency, *reqs: ResourceRequest) -> AgentResponse:
     return AgentResponse(
-        agent_id="X", agency=agency, incident_id="T", resource_requests=list(reqs),
+        agent_id="X", agency=agency, incident_id=1, resource_requests=list(reqs),
         scene_constraints=SceneConstraints(), mission_details=MissionDetails(summary=""), executed_by=ExecutedBy.mock,
     )
 
@@ -89,7 +89,7 @@ def test_preemption_from_lower_severity_incident(db):
     allocs, _ = hard.allocate(low, responses, [], Agency.fire, db)
     routing = RoutingDecision(incident_id=low.incident_id, agencies=[Agency.fire], lead_agency=Agency.fire,
                               rationale="", executed_by=ExecutedBy.rules)
-    db.insert_incident(low)
+    db.insert_incident(low.incident, low.triage)
     db.record_response(low, IncidentResponse(incident_id=low.incident_id, routing=routing, agent_responses=responses,
                                              hard_conflicts=[], hard_resolutions=[], soft_conflicts=[], allocations=allocs))
 

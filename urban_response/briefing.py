@@ -13,7 +13,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 
 from .db import Database
-from .schemas import Directive, Evaluation, Incident, IncidentResponse
+from .schemas import Case, Directive, Evaluation, IncidentResponse
 
 TITLE = {
     "rtc": "Road collision", "structure_fire": "Building fire", "high_rise_fire": "High-rise fire", "vehicle_fire": "Vehicle fire",
@@ -27,8 +27,9 @@ def title(cat: str) -> str:
     return TITLE.get(cat, cat.replace("_", " ").capitalize())
 
 
-def place(incident: Incident) -> str:
-    return incident.location.address or incident.location.district or f"{incident.location.lat:.4f}, {incident.location.lon:.4f}"
+def place(incident: Case) -> str:
+    loc = incident.incident.location
+    return loc.address or loc.landmark or incident.triage.place or f"{incident.triage.lat:.4f}, {incident.triage.lon:.4f}"
 
 
 def first_sentence(text: str, limit: int = 160) -> str:
@@ -63,7 +64,7 @@ def hhmm(dt: datetime) -> str:
 # ---- log lines --------------------------------------------------------------- #
 
 
-def log_received(i: Incident) -> str:
+def log_received(i: Case) -> str:
     parts = [f"{title(i.category)} reported at {place(i)}.", first_sentence(i.description)]
     people = []
     if i.casualties_reported:
@@ -113,7 +114,7 @@ def log_evaluated(e: Evaluation) -> str:
     return f"Response rated {e.score}/100 (grade {e.grade}). {verdict}"
 
 
-def default_headline(i: Incident, r: IncidentResponse | None) -> tuple[str, str]:
+def default_headline(i: Case, r: IncidentResponse | None) -> tuple[str, str]:
     lead = r.routing.lead_agency.value.capitalize() if r else "Crews"
     n = len(r.allocations) if r else 0
     head = f"{title(i.category)} on {place(i).split(',')[0]}: {n} units sent"
@@ -138,7 +139,7 @@ def build_brief(db: Database, incident_id: str) -> dict | None:
         if parent:
             parent["opened_from_duplicate"] = incident_id
         return parent
-    inc = Incident.model_validate(row["incident"])
+    inc = db.get_case(incident_id)
     resp = None
     if row["responses"]:
         stored = db.get_response(row["responses"][-1])
@@ -167,12 +168,14 @@ def build_brief(db: Database, incident_id: str) -> dict | None:
         "category": title(inc.category),
         "severity": inc.severity,
         "place": place(inc),
-        "location": {"lat": inc.location.lat, "lon": inc.location.lon},
+        "location": {"lat": inc.triage.lat, "lon": inc.triage.lon, "resolved_by": inc.triage.location_resolved_by},
+        "incident": inc.incident.canonical_json(),
         "facts": {
             "Lead": resp.routing.lead_agency.value.capitalize() if resp else "-",
             "Agencies": ", ".join(a.value.capitalize() for a in resp.routing.agencies) if resp else "-",
             "Injured": inc.casualties_reported, "Trapped": inc.people_trapped,
             "Hazards": ", ".join(inc.hazards) or "none reported",
+            "Channel": inc.source,
             "RVP": (lead_resp.scene_constraints.staging_area if lead_resp and lead_resp.scene_constraints.staging_area else "-"),
             "Reports": row["report_count"],
         },
@@ -182,6 +185,7 @@ def build_brief(db: Database, incident_id: str) -> dict | None:
         "log": db.incident_log(incident_id),
         "evaluation": ev.model_dump(mode="json") if ev else None,
         "merged_reports": [{"incident_id": m["incident_id"], "received_at": m["received_at"],
-                            "place": m["incident"]["location"].get("address", "")} for m in row["merged_reports"]],
+                            "place": m["incident"]["location"].get("address") or m["incident"]["location"].get("landmark") or ""}
+                           for m in row["merged_reports"]],
         "related": resp.related_incidents if resp else [],
     }

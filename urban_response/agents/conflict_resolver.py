@@ -40,7 +40,7 @@ from ..schemas import (
     HardConflict,
     HardConflictKind,
     HardResolution,
-    Incident,
+    Case,
     IncidentResponse,
     ManifestItem,
     RequestPriority,
@@ -175,7 +175,7 @@ class ConflictResolverAgent:
         people = {p["speciality"]: p["available"] for p in self.db.personnel_inventory()}
         return (
             INSTRUCTIONS.format(lead=routing.lead_agency.value)
-            + f"\n\nINCIDENT:\n{incident.model_dump_json()}"
+            + f"\n\nINCIDENT (canonical) AND TRIAGE:\n{incident.prompt_json()}"
             + f"\n\nAGENT RESPONSES:\n{json.dumps(agents, indent=2)}"
             + f"\n\nLIFE-SAFETY FLOORS (code enforces): {json.dumps({k: [v[0], v[1].value, v[2]] for k, v in floors.items()})}"
             + f"\n\nAVAILABILITY (vehicles free now): {json.dumps(availability)}"
@@ -220,7 +220,7 @@ class ConflictResolverAgent:
         return [chosen.get(t) or defaults[t].model_copy(update={"executed_by": ExecutedBy.fallback}) for t in actionable]
 
     async def resolve_and_commit(
-        self, incident: Incident, routing: RoutingDecision, responses: list[AgentResponse], on_event=None,
+        self, incident: Case, routing: RoutingDecision, responses: list[AgentResponse], on_event=None,
         dedup=None, related: list[str] | None = None,
     ) -> IncidentResponse:
         async def emit(name: str, payload: dict) -> None:
@@ -272,6 +272,8 @@ class ConflictResolverAgent:
 
             response = IncidentResponse(
                 incident_id=incident.incident_id,
+                incident=incident.incident,
+                triage=incident.triage,
                 cr_executed_by=executed_by,
                 cr_rationale=rationale,
                 routing=routing,

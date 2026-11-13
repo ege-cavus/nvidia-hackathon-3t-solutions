@@ -12,7 +12,7 @@ from urban_response.schemas import (
 
 def resp(agency: Agency, **sc) -> AgentResponse:
     return AgentResponse(
-        agent_id="X", agency=agency, incident_id="T", resource_requests=[],
+        agent_id="X", agency=agency, incident_id=1, resource_requests=[],
         scene_constraints=SceneConstraints(**sc), mission_details=MissionDetails(summary=""), executed_by=ExecutedBy.mock,
     )
 

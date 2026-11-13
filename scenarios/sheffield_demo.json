@@ -1,46 +1,53 @@
 [
   {
-    "category": "rtc",
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900201", "relationship": "involved", "on_scene": true},
+    "location": {"address": "Sheffield Parkway, Darnall", "landmark": "Darnall junction", "lat": 53.3870, "lon": -1.4300, "location_source": "caller_gps"},
     "description": "Two-car collision on the Parkway near the Darnall junction. Two occupants trapped, one unconscious. Fuel leaking.",
-    "location": {"lat": 53.3870, "lon": -1.4300, "address": "Sheffield Parkway, Darnall", "district": "Darnall"},
-    "severity": 3,
-    "casualties_reported": 3,
-    "people_trapped": 2,
-    "hazards": ["fuel leak", "live traffic"]
+    "caller_reported_severity": "serious",
+    "casualties_reported": 3, "people_trapped_reported": 2,
+    "patients": [{"approx_age": "50s", "sex": "female", "conscious": false, "breathing": "shallow", "bleeding": true, "notes": "trapped in driver seat"}],
+    "hazards_reported": ["fuel leak", "live traffic"], "weapons_mentioned": false, "persons_of_interest": [],
+    "vehicles": [{"type": "car", "description": "blue estate", "registration": "SH21 KLM", "occupants": 2},
+                 {"type": "car", "description": "white van", "registration": "YB70 XYZ", "occupants": 1}]
   },
   {
-    "category": "firearms",
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900202", "relationship": "witness", "on_scene": true},
+    "location": {"address": "Fitzalan Square, City Centre", "landmark": "outside the bar by the tram stop", "lat": 53.3825, "lon": -1.4645, "location_source": "caller_gps"},
     "description": "Reports of shots fired outside a bar on Fitzalan Square. Two people injured, suspect seen leaving on foot towards Haymarket.",
-    "location": {"lat": 53.3825, "lon": -1.4645, "address": "Fitzalan Square, City Centre", "district": "City Centre"},
-    "severity": 4,
-    "casualties_reported": 2,
-    "weapons_involved": true,
-    "hazards": ["armed suspect at large"]
+    "caller_reported_severity": "people shot",
+    "casualties_reported": 2, "people_trapped_reported": 0, "patients": [],
+    "hazards_reported": ["armed suspect at large"], "weapons_mentioned": true,
+    "persons_of_interest": [{"role": "suspect", "description": "male, dark hoodie", "direction_of_travel": "towards Haymarket", "armed": true}],
+    "vehicles": []
   },
   {
-    "category": "high_rise_fire",
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900203", "relationship": "resident", "on_scene": true},
+    "location": {"address": "Hanover Way, Broomhall", "landmark": "tower block opposite the bus stop", "lat": 53.3770, "lon": -1.4830, "location_source": "caller_gps", "location_notes": "9th floor"},
     "description": "Fire on the 9th floor of a residential tower block in Broomhall, smoke spreading to floors above. Residents reported trapped on upper floors.",
-    "location": {"lat": 53.3770, "lon": -1.4830, "address": "Hanover Way, Broomhall", "district": "Broomhall"},
-    "severity": 5,
-    "casualties_reported": 6,
-    "people_trapped": 3,
-    "hazards": ["smoke", "falling debris"]
+    "caller_reported_severity": "people trapped",
+    "casualties_reported": 6, "people_trapped_reported": 3, "patients": [],
+    "hazards_reported": ["smoke", "falling debris"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
   },
   {
-    "category": "hazmat",
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900204", "relationship": "witness", "on_scene": true},
+    "location": {"address": "Meadowhall Road, Tinsley", "landmark": "warehouse next to the tanker", "lat": 53.4130, "lon": -1.4100, "location_source": "caller_gps"},
     "description": "Chemical tanker leaking near Meadowhall. Strong smell, several workers from an adjacent warehouse report breathing difficulty.",
-    "location": {"lat": 53.4130, "lon": -1.4100, "address": "Meadowhall Road, Tinsley", "district": "Tinsley"},
-    "severity": 4,
-    "casualties_reported": 4,
-    "hazards": ["unknown chemical", "toxic vapour"]
+    "caller_reported_severity": "serious",
+    "casualties_reported": 4, "people_trapped_reported": 0, "patients": [],
+    "hazards_reported": ["unknown chemical", "toxic vapour"], "weapons_mentioned": false, "persons_of_interest": [],
+    "vehicles": [{"type": "tanker", "description": "articulated chemical tanker, hazard placard visible", "registration": null, "occupants": 1}]
   },
   {
-    "category": "structure_fire",
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900205", "relationship": "resident", "on_scene": true},
+    "location": {"address": "Park Hill, South Street", "landmark": "Park Hill flats", "lat": 53.3800, "lon": -1.4610, "location_source": "caller_gps"},
     "description": "Large fire in a block at Park Hill flats spreading across two floors. Two residents trapped on a balcony.",
-    "location": {"lat": 53.3800, "lon": -1.4610, "address": "Park Hill, South Street", "district": "Park Hill"},
-    "severity": 5,
-    "casualties_reported": 2,
-    "people_trapped": 2,
-    "hazards": ["smoke", "structural collapse risk"]
+    "caller_reported_severity": "very bad",
+    "casualties_reported": 2, "people_trapped_reported": 2, "patients": [],
+    "hazards_reported": ["smoke", "structural collapse risk"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
   }
 ]

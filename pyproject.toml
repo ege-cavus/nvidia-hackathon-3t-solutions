@@ -9,10 +9,18 @@ dependencies = [
     "openai>=1.40",
     "fastapi>=0.115",
     "uvicorn>=0.30",
+    "sentence-transformers>=3",
+    "scikit-learn>=1.4",
+    "numpy>=1.26",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "jsonschema>=4.26.0",
+]
 
 [project.scripts]
 urban-response = "urban_response.cli:main"
