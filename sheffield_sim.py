@@ -663,6 +663,33 @@ class SheffieldSim:
                 unit.update(lat=home["lat"], lon=home["lon"], assigned_cam=None)
         self._sync_total(unit)
 
+    def validate_world_invariants(self):
+        """Fail loudly on lifecycle corruption; useful for replay/game checks."""
+        timers = ("travel_to_scene_ticks", "on_scene_ticks", "return_to_base_ticks", "cooldown_ticks_remaining")
+        busy_statuses = {"DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE", "DEPLETED_RETURNING", "DEPLETED_COOLDOWN"}
+        for key, unit in self.state["resource_db"].items():
+            if any(type(unit[t]) is not int or unit[t] < 0 for t in timers):
+                raise ValueError(f"{key}: invalid countdown")
+            if type(unit["total_depletion_ticks_remaining"]) is not int or unit["total_depletion_ticks_remaining"] != sum(unit[t] for t in timers):
+                raise ValueError(f"{key}: inconsistent total depletion")
+            phases = unit.get("phases", [])
+            if unit["status"] == "AVAILABLE":
+                home = EMERGENCY_HUBS[unit["home_hub"]]
+                if unit["assigned_cam"] is not None or phases or unit["total_depletion_ticks_remaining"] != 0:
+                    raise ValueError(f"{key}: available unit still holds work")
+                if (unit["lat"], unit["lon"]) != (home["lat"], home["lon"]):
+                    raise ValueError(f"{key}: available unit is away from base")
+            else:
+                if unit["status"] not in busy_statuses or not phases or phases[0]["status"] != unit["status"]:
+                    raise ValueError(f"{key}: inconsistent lifecycle phase")
+                if unit["assigned_cam"] not in self.state["active_incidents"]:
+                    raise ValueError(f"{key}: assignment has no incident")
+                if any(p["timer"] not in timers or p["status"] not in busy_statuses or type(p["remaining"]) is not int or p["remaining"] <= 0 for p in phases):
+                    raise ValueError(f"{key}: invalid phase work")
+                if any(sum(p["remaining"] for p in phases if p["timer"] == timer) != unit[timer] for timer in timers):
+                    raise ValueError(f"{key}: phase queue and countdown differ")
+        return True
+
     def tick(self, spawn=True):
         self.state["tick"] += 1
         self.state["effectiveness_metrics"]["resource_busy_ticks"] += sum(
@@ -814,6 +841,75 @@ def run_incident_profile_demo(incident_type, graph=None, response_delay=0, ticks
             "visual_observation": incident["visual_observation"], "trace": trace}
 
 
+# Fixed external arrivals; never conditional on either controller's decisions.
+MIXED_DEMO_EVENTS = ((0, "CAM_08", "flood"), (1, "CAM_01", "building_fire"),
+                     (2, "CAM_13", "road_collision"), (3, "CAM_21", "medical_emergency"),
+                     (4, "CAM_10", "medical_emergency"))
+
+
+def run_mixed_incident_demo(graph=None, ticks=90, policy="severity_first"):
+    """Reproducible shared-fleet stress test, not a learned-agent benchmark.
+
+    Scripted policy selects missing capabilities by round-trip depletion cost.
+    Unavailable resources defer the allocation; no synthetic replacement units.
+    """
+    if type(ticks) is not int or ticks < 1 or policy not in ("severity_first", "arrival_first", "no_response"):
+        raise ValueError("Invalid tick horizon or scripted policy")
+    if graph is None:
+        graph, _ = load_sheffield_graph(strict=True)
+    sim = SheffieldSim(graph=graph)
+    commands, deferred, trace = [], [], []
+    for _ in range(ticks):
+        for event_tick, cam, kind in MIXED_DEMO_EVENTS:
+            if sim.state["tick"] == event_tick:
+                sim.start_incident_profile(cam, kind)
+        pending = [(cam, i) for cam, i in sim.state["active_incidents"].items() if i["status"] != "RESOLVED"]
+        pending.sort(key=lambda item: ((-item[1]["severity"] if policy == "severity_first" else item[1]["spawn_tick"]), item[1]["spawn_tick"], item[0]))
+        if policy != "no_response":
+            for cam, incident in pending:
+                committed = {u["agency"] for u in sim.state["resource_db"].values() if u["assigned_cam"] == cam
+                             and u["status"] in ("DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE")}
+                missing = set(incident["response_requirements"]) - committed
+                if not missing:
+                    continue
+                selected, reason = [], None
+                for agency in sorted(missing):
+                    candidates = []
+                    for unit_id, unit in sim.state["resource_db"].items():
+                        if unit["agency"] == agency and is_unit_available(unit):
+                            try:
+                                plan = sim.estimate_depletion_ticks(unit_id, cam, incident["severity"])
+                                candidates.append((plan["total_depletion_ticks_remaining"], unit_id))
+                            except (nx.NetworkXNoPath, nx.NodeNotFound):
+                                pass
+                    if not candidates:
+                        reason = "No available round-trip resource for " + agency
+                        break
+                    selected.append(min(candidates)[1])
+                if reason is not None:
+                    deferred.append({"tick": sim.state["tick"], "cam_id": cam, "reason": reason})
+                    continue
+                receipt = sim.apply_command(DispatchCommand(cam, tuple(selected), sim.state["tick"], "AGENTS"))
+                commands.append(receipt)
+                if not receipt["accepted"]:
+                    deferred.append({"tick": sim.state["tick"], "cam_id": cam, "reason": receipt["reason"]})
+        sim.validate_world_invariants()
+        sim.tick(spawn=False)
+        sim.validate_world_invariants()
+        trace.append({"tick": sim.state["tick"], "score": sim.state["effectiveness_metrics"]["overall_score"],
+                      "available_units": [key for key, unit in sim.state["resource_db"].items() if is_unit_available(unit)],
+                      "incidents": {cam: {field: i[field] for field in ("stage", "status", "severity", "reinforcement_required")}
+                                    for cam, i in sim.state["active_incidents"].items()}})
+    return {"scenario": "five_arrivals_four_types_v1", "policy": policy, "policy_kind": "SCRIPTED_NOT_AI",
+            "horizon_ticks": ticks, "events": MIXED_DEMO_EVENTS, "routing": sim.state["routing"],
+            "score_breakdown": effectiveness_score_breakdown(sim.state["effectiveness_metrics"]),
+            "effectiveness_metrics": sim.state["effectiveness_metrics"], "commands": commands,
+            "deferred_requests": deferred, "invariants_checked_each_tick": True,
+            "incidents": {cam: {k: i[k] for k in ("incident_type", "spawn_tick", "stage", "status", "response_ticks", "stage_history")}
+                          for cam, i in sim.state["active_incidents"].items()},
+            "resources": sim.state["resource_db"], "trace": trace}
+
+
 def compare_park_square_responses(graph=None, ticks=60):
     """Same environment/horizon, four scripted policies; no models or footage."""
     if graph is None:
@@ -836,6 +932,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-osm", action="store_true")
     parser.add_argument("--cosmos-manifest", action="store_true", help="Print the four stage clip specifications; does not generate video")
     parser.add_argument("--cosmos-reference", type=Path, help="Local Park Square reference frame for the manifest")
+    parser.add_argument("--mixed-demo", choices=("severity_first", "arrival_first", "no_response"), help="Stress-test the shared fleet against fixed mixed incident arrivals")
     parser.add_argument("--incident-demo", choices=("flood", "building_fire", "road_collision", "medical_emergency"), help="Run a staged incident without models or footage")
     parser.add_argument("--compare-flood", action="store_true", help="Compare prompt, delayed and absent scripted responses without Cosmos")
     parser.add_argument("--flood-demo", action="store_true", help="Run staged Park Square flood with scripted Fire/Police response")
@@ -847,6 +944,12 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if args.ticks < 0 or args.response_delay < 0:
         parser.error("Ticks and response delay must be nonnegative")
+    if args.mixed_demo:
+        if args.ticks < 1 or args.road_report or args.flood_demo or args.compare_flood or args.incident_demo:
+            parser.error("--mixed-demo needs positive --ticks and cannot combine with other scenario/report modes")
+        graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
+        print(json.dumps(run_mixed_incident_demo(graph, args.ticks, args.mixed_demo), indent=2))
+        raise SystemExit(0)
     if args.incident_demo:
         if args.ticks < 1 or args.road_report or args.flood_demo or args.compare_flood:
             parser.error("--incident-demo requires positive --ticks and cannot combine with other scenario/report modes")
