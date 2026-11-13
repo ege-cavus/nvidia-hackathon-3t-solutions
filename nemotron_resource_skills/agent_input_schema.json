@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Specialist agent input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "simulation_only",
+    "snapshot_id",
+    "service",
+    "events",
+    "resources_available"
+  ],
+  "properties": {
+    "simulation_only": {
+      "const": true
+    },
+    "snapshot_id": {
+      "type": "string"
+    },
+    "service": {
+      "enum": [
+        "police",
+        "fire",
+        "ambulance"
+      ]
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "cluster_id",
+          "summary"
+        ],
+        "properties": {
+          "cluster_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "source_report_ids": {
+            "type": "array"
+          },
+          "report_count": {
+            "type": "integer"
+          },
+          "location_label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "resources_available": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    }
+  }
+}
