@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "node scripts/sync-console.mjs",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/backend/:path*", "destination": "/api/proxy?path=:path*" }
+  ],
+  "functions": {
+    "api/proxy.js": { "maxDuration": 300 }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    }
+  ]
+}

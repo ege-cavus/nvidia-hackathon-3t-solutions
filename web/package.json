@@ -1,0 +1,10 @@
+{
+  "name": "suru-console-web",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node scripts/sync-console.mjs",
+    "dev": "vercel dev"
+  }
+}

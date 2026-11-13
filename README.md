@@ -1,82 +1,179 @@
-# Sheffield Urban Response Unit (SURU)
+# nvidia-hackathon-3t-solutions
+Urban Response Research: agentic multi-agency incident response for Sheffield, running locally on an NVIDIA DGX Spark (128 GB).
 
-Python/Ollama hackathon digital twin: graph simulation -> Qwen CCTV triage ->
-selected Nemotron agency proposals -> consensus or Qwen arbitration -> dispatch.
+## Architecture
 
-## Setup and run
+The loop runs from report to backlog with no human step.
 
-Python >=3.11. PowerShell:
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -e .
-python sheffield_sim.py --ticks 5
-python agent_orchestrator.py --ticks 20
-streamlit run app.py
-python -m unittest discover -s tests -v
+```
+report ──► 0. INGEST              canonical incident → numeric id → Qwen triage → MiniLM clustering
+              │  duplicate ──► merged into the existing incident, logged, nothing dispatched
+              │  related   ──► dispatched, with the nearby incident passed to the agents as context
+              ▼
+           1. ROUTE (Qwen)        which agencies, who leads
+              ▼
+           2. Nemotron A1 police · A2 ambulance · A3 fire   (parallel, each with its own KB)
+              ▼  numeric requests + scene constraints + mission details
+           3. Nemotron CR         final call
+              · MANIFEST: final quantity per type and agency (consolidates overlaps, drops
+                nice-to-haves, errs on abundance for life safety)
+              · code enforces life-safety floors and caps over the manifest
+              · hard conflicts (vehicles AND crews) → CR picks a valid resolution → code re-checks
+              · soft conflicts: rules + CR review of free text
+              · ORDERS: normalised, one imperative sentence per agency
+              · code allocates fully crewed vehicles → Response DB (incident: dispatched)
+              ▼
+           4. EVALUATE (Qwen)     reads code-computed success metrics → score, verdict, headline
+              ▼
+           5. FINALISE            incident → backlog; units and crews return automatically at
+                                  their release time; incident closes when all are back
 ```
 
-The default Seed 42 demo uses invented, directed graph links and synthetic triage.
-The dashboard advances only when requested; each tick represents one minute.
-Probabilistic mode: instantiate SheffieldSim(demo=False, seed=42).
-OSM: run `python sheffield_sim.py --download-osm`; successful downloads are cached
-at assets/sheffield.graphml and reused. Download failures fall back to a labelled
-synthetic graph. Routes exclude blocked_edges; directed return paths are computed
-separately. Travel times use inferred speeds and tick rounding. Resource depletion
-includes on-scene work, return, hospital handover and fire restock. Escalation can extend on-scene work; police stay
-locked while severity >=4. Mid-trip rerouting is not yet implemented.
+### Data model
 
-## Live models and assets
-
-Start Ollama and install appropriate vision/chat weights on the demo host. The
-team-requested defaults Qwen3.8-27B and Nemotron-3.5-Bolt-E4B are configurable model
-names, not verified Ollama registry tags. Configure your actual installed names:
-
-```powershell
-$env:SURU_QWEN_MODEL = 'your-installed-vision-model'
-$env:SURU_NEMOTRON_MODEL = 'your-installed-agency-model'
-python agent_orchestrator.py --live
+```
+incidents (Incident DB)            responses (Response DB)         agent_responses / allocations /
+  incident_id PK ◄─────────────┐     response_id PK ◄──────────────  crew_assignments / conflicts
+  status                       └──   incident_id FK                   (all keyed by response_id)
+  duplicate_of FK (merged)           manifest, directives, evaluation
+  report_count
+personnel (speciality, station, on_shift)   inventory_ledger (dispatched / reassigned / returned)
+incident_log (plain-language timeline per incident)
 ```
 
-For each CAM_XX, supply Cosmos-generated MP4 at
-assets/hero_cams_disaster/CAM_XX.mp4. Prepare first-frame JPGs with:
+Incident status: `pending` → `dispatched` → `backlog` → `closed`. A duplicate report becomes `merged`, with `duplicate_of` pointing at the incident it joined.
 
-```powershell
-python generate_assets.py --prepare-heroes
-python generate_assets.py --geojson cameras.geojson
-python generate_assets.py --source input.mp4 --destination assets/hero_cams_disaster/CAM_01.mp4
+**Canonical incident.** [examples/incident.schema.json](examples/incident.schema.json) is the incident for the whole pipeline: intake, storage, de-duplication, agents and responses all use it. `incident_id` is a numeric YYYYMMDDNNNNNN assigned by the database on ingest, and responses get a numeric `response_id` in the same format. The incident is never rewritten. What the pipeline derives from it lives in a separate **triage** object, produced by Qwen at intake with rules as the fallback and as a check:
+- `category` and `severity`;
+- coordinates, taken from caller GPS first, then a built-in Sheffield gazetteer (offline), then Qwen's estimate, then the city centre (flagged in the log);
+- counts of casualties and trapped people, which can never be lower than what the caller reported.
+
+Agents are shown `{incident, triage}`, and every response carries both.
+
+**Duplicate detection: MiniLM proposes, the agent decides.** [incident_cluster_handoff.py](incident_cluster_handoff.py), Joshua's MiniLM pipeline from `origin/main`, is vendored byte-for-byte unchanged. It runs on every report with `all-MiniLM-L6-v2` embeddings, location, time and vehicle-registration adjustments, and complete-linkage clustering at threshold **0.85**. [dedup.py](urban_response/dedup.py) feeds it one representative report per live incident (the earliest with caller GPS) plus the new report. It returns MiniLM's proposal and the candidate incidents: those MiniLM clustered the report with, plus active incidents within 500 m that it didn't.
+- **Final call:** Qwen, the intake agent, decides between `duplicate` (merged, nothing dispatched), `related` (dispatched separately, with the neighbour as context) and `new`. It is told to merge only when confident; if the reports are probably different incidents, it dispatches separately. It can also merge reports MiniLM kept apart, such as two callers who name different landmarks for the same block.
+- **No candidates:** no agent call is made.
+- **Fallback:** in rules-only mode, or if the agent fails or picks an incident outside the candidates, MiniLM's verdict stands, with the category guard (`UR_DEDUP_CATEGORY_GUARD`) refusing merges across clearly different incident types.
+- **Merges:** reports only merge into earlier incidents, and a report merged into one that later merges elsewhere moves to the root.
+- **Audit:** each report stores its decision (MiniLM's proposal, the candidates shown, the final verdict and who made it) on the incident row.
+- **Offline use:** run `urban-response prefetch` once, then `HF_HUB_OFFLINE=1`. `UR_MINILM_MODEL` can point to a local model directory.
+
+**Crews** ([resources.py](urban_response/resources.py)): every vehicle type needs specific specialities (for example a fire engine needs 1 crew commander and 3 firefighters; an ARV needs 2 firearms officers). The allocator crews each vehicle from its own station first, then from the nearest stations. A vehicle that can't be crewed is not sent. A shortfall of people is its own hard conflict (`crew_shortfall`).
+
+**Life-safety floors** ([manifest.py](urban_response/manifest.py)): CR may trim, but never below these minimums:
+- one ambulance per casualty (beyond four casualties, one per two);
+- a rescue tender when anyone is trapped;
+- 2 or 4 fire engines for a fire, plus an aerial platform for a high-rise;
+- a hazmat unit for hazardous substances;
+- 2 ARVs for a weapons call;
+- HART for casualties in a hazardous area.
+
+**Success metrics** ([evaluation.py](urban_response/evaluation.py)), all computed in code:
+- essential needs met
+- arrival targets met per agency
+- vehicles fully crewed
+- units asked for vs declared
+- mutual aid requests
+- units reassigned from other incidents
+
+**Phone brief** ([briefing.py](urban_response/briefing.py), `GET /api/brief/{id}`, `/?brief=INC-…` in the console): headline, dek, dateline, key facts, orders by agency, units with crews, and a timestamped incident log. It is written like a news log, with no model reasoning in it.
+
+Every agent output is tagged `executed_by`: `nemotron`, `qwen`, `rules`, `fallback` (the model call failed and rules filled in) or `mock`.
+
+### Conflict layers
+
+**Hard (deterministic accounting)**, see [conflicts/hard.py](urban_response/conflicts/hard.py):
+
+| kind | meaning |
+|---|---|
+| `crew_shortfall` | not enough free, on-shift people with a speciality to crew the vehicles |
+| `shortfall` | one agency requests more of a type than is free in the Resource DB |
+| `contention` | several agencies request the same pool and it cannot cover all of them |
+| `ownership` | an agency requests another agency's resource type |
+| `unknown_resource` | the type doesn't exist in the Resource DB |
+| `eta_unmet` | units exist, but none within the requested `max_eta_min` |
+
+Availability accounts for units committed to every active incident. Possible resolutions are `preempt` (take units from an incident at least 2 severity levels lower), `substitute`, `mutual_aid`, `relax_eta` and `accept_partial`. The code lists which ones are valid for each conflict. CR picks one, the choice is re-validated, and the rule policy takes over if the choice is invalid. The allocator is deterministic: essential requests first, then lead agency first, then nearest unit first.
+
+**Soft (response details)**, see [conflicts/soft.py](urban_response/conflicts/soft.py):
+
+| code | rule |
+|---|---|
+| `ENTRY_RESTRICTED_BUT_REQUIRED` | one agency closes or controls the scene that another needs to enter |
+| `CORDON_INSIDE_EVACUATION_ZONE` | an outer cordon is smaller than another agency's evacuation radius |
+| `STAGING_INSIDE_INNER_CORDON` | an agency stages inside another agency's hot zone |
+| `ROAD_CLOSURE_BLOCKS_ACCESS` | a closed road is another agency's access route |
+| `STAGING_MISMATCH` | agencies propose different RVPs |
+| `EVIDENCE_VS_ENTRY` | evidence preservation versus operational entry |
+| `UNROUTED_AGENCY_NEEDED` / `NEED_WITHOUT_RESOURCES` | an inter-agency dependency that nobody covers |
+
+After the rules run, CR reads the free-text mission details, reports only contradictions the rules missed (`source: semantic`), and writes the unified directives.
+
+## Quick start
+
+```bash
+uv sync
+uv run urban-response demo --reset     # 5 Sheffield scenarios, mock mode (no GPU needed)
+uv run pytest                          # 21 tests
+uv run urban-response incidents        # incident DB
+uv run urban-response burst --reset    # 4 near-simultaneous calls around one fire: 2 merged, 1 related
+UR_TIME_SCALE=20 uv run urban-response serve   # units return 20x faster, so the loop closes during a demo
+uv run urban-response serve            # HTTP API on :8080, docs at /docs
 ```
 
-The GeoJSON loader validates a local 212-point FeatureCollection; no council
-pins or videos are fabricated. MP4s are ignored. Cosmos generation/API access
-is not bundled. Qwen reads a prepared frame or extracts the first video frame.
-Selected agencies run in parallel with bounded model-call timeouts. Structured
-outputs, agency ownership, resource availability, round-trip reachability and
-simulation coverage rules are validated. Invalid arbiter decisions defer dispatch.
+The demo runs the scenarios in sequence against shared resources, so later incidents show shortfalls, preemption from the lower-severity RTC, mutual aid, and soft conflicts such as the ambulance staging inside the fire inner cordon.
 
-## Data provenance and score
+## Running with the models on the DGX Spark
 
-The requested NODE_HISTORICAL_PROBABILITIES API holds explicitly uncalibrated
-synthetic priors, not measured probabilities. Public references and simulation
-SOPs are in knowledge_base.py. Numerical thresholds are game rules; seven ticks
-is a simulation SLA rather than an individual NHS response guarantee.
-Score = clamp(100 - 5*SLA misses - 3*spillovers + resolved, 0, 100).
-SLA counts first arrival <=7 ticks. Severity >=9 counts one spillover per incident;
-resolution before that threshold counts one spillover prevented.
+Serve both models with any OpenAI-compatible server (vLLM, NIM, SGLang) on separate ports, then:
 
-## Team communication
+```bash
+export LLM_MODE=live
+export QWEN_BASE_URL=http://localhost:8000/v1      QWEN_MODEL=<served qwen model name>
+export NEMOTRON_BASE_URL=http://localhost:8001/v1  NEMOTRON_MODEL=<served nemotron model name>
+uv run urban-response demo --reset
+```
 
-Use [GitHub issues](https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/issues):
-architecture #1, graph simulation #2, model agents #3, dashboard #4, data/SOPs #5.
-Post contract requests, blockers and test results there. File leases and the
-shared contract are documented in [AGENTS.md](AGENTS.md).
+All four Nemotron agents (A1-A3 and CR) share one Nemotron endpoint by default. Set `CR_BASE_URL` / `CR_MODEL` to run CR separately. They differ in persona, knowledge base and allowed resource types. Calls use `response_format=json_schema` (guided decoding) and turn thinking off through the chat template. If the server rejects either, set `UR_GUIDED_JSON=0` or `UR_DISABLE_THINKING=0`.
 
-## Future Beat the Agents mode
+## Testing with Claude Code instead of the Spark
 
-game_session.py provides independent human/agent worlds, a common incident tape
-and clock, controller-independent dispatch validation and command replay. The
-playable UI is pending. See [GAME_ARCHITECTURE.md](GAME_ARCHITECTURE.md) and
-[issue #6](https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/issues/6).
-The proposed next step is four incident profiles with type-specific stages,
-while retaining the current flood/fire/trauma hazard categories for compatibility.
+To check the pipeline against a real LLM before the Spark is set up, serve every role (Qwen, A1–A3, CR) with Claude Code in headless mode (`claude -p`). It uses your Claude Code login, so no API key is needed. Tools and MCP servers are switched off for these calls. Prompts, schemas and validation are the same as on the vLLM path.
+
+```bash
+LLM_MODE=live LLM_PROVIDER=claude-code uv run urban-response incident scenarios/simple_rtc.json --trace run.jsonl
+uv run urban-response trace run.jsonl          # every prompt and reply, per agent
+```
+
+`CLAUDE_MODEL` overrides Claude Code's default model, and `CLAUDE_EFFORT` sets the effort level. `--trace` works with any provider. The `qwen` / `nemotron` tags in the output name the role, not the model; the trace records which model actually served each call.
+
+## API
+
+| method | path | |
+|---|---|---|
+| POST | `/incidents` | register an incident and run it through the pipeline → `IncidentResponse` |
+| GET | `/incidents?status=`, `/incidents/{id}`, `/backlog` | incident DB |
+| GET | `/responses`, `/responses/{id}`, `/incidents/{id}/responses` | response DB |
+| POST | `/incidents/{id}/close`, `/units/{id}/release` | release units |
+| GET | `/resources` | inventory: total, committed, available |
+| GET | `/resources/{type}/forecast` | availability forecast based on expected release times |
+| GET | `/conflicts?incident_id=&response_id=` | conflicts per response (hard, soft, preempted) |
+
+## Layout
+
+```
+urban_response/
+  schemas.py              canonical Incident / AgentResponse / conflicts / IncidentResponse
+  agents/orchestrator.py  Qwen: register incident, route, fan out, hand off to CR
+  agents/conflict_resolver.py  Nemotron CR: conflict resolution, final call, writes the response DB
+  agents/specialist.py    Nemotron A1/A2/A3: KB retrieval + structured response
+  agents/heuristics.py    deterministic stand-ins (mock mode and fallback)
+  conflicts/hard.py       accounting, resolution options, allocator
+  conflicts/soft.py       scene-constraint rules
+  db.py / seed.py         Resource DB + incident log (SQLite), Sheffield seed data
+  kb.py                   BM25 retrieval over knowledge_base/<agency>/*.md
+knowledge_base/           per-agency guidance (illustrative)
+scenarios/                demo incidents
+```
+
+> Seed data (stations, unit counts, coordinates) and knowledge-base content are approximate and illustrative, for the hackathon demo only.

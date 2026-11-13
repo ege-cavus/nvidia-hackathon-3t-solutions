@@ -321,7 +321,7 @@ function renderDrawer() {
       <h2><span class="mono">${esc(inc.id)}</span> – ${esc(categoryText(inc.category))} – <span style="color:${SEV_COLOR[inc.severity]}">SEV ${inc.severity}</span>${inc.district ? ` – ${esc(inc.district)}` : ""}</h2>
       ${pill(inc.status)}
       <div class="d-actions">
-        ${inc.status === "failed" ? `<button class="btn small" type="button" data-act="retry">Retry</button>` : ""}
+        ${inc.status === "failed" && API.can("retryIncident") ? `<button class="btn small" type="button" data-act="retry">Retry</button>` : ""}
         ${inc.status !== "closed" ? `<button class="btn small" type="button" data-act="close-incident">Close incident</button>` : ""}
         <button class="btn small ghost" type="button" data-act="deselect" aria-label="Hide detail">Hide</button>
       </div>
@@ -352,6 +352,7 @@ const TAB = {
         <h3>Unified directives (CR)</h3>
         ${r && r.directives.length ? `<ol>${r.directives.map((d) => `<li>${esc(d)}</li>`).join("")}</ol>` : `<p class="muted">CR has not issued directives yet.</p>`}
         ${r && r.cr_rationale ? `<p class="muted small">${esc(r.cr_rationale)}</p>` : ""}
+        ${r && r.evaluation ? `<h3>Qwen evaluation</h3><p><b>Grade ${esc(r.evaluation.grade)} (${r.evaluation.score}/100)</b>${r.evaluation.headline ? ` – ${esc(r.evaluation.headline)}` : ""}</p>${listOr(r.evaluation.findings, "")}` : ""}
       </div>
     </div>`;
   },
@@ -481,6 +482,18 @@ function select(id) {
   if (map && inc && Number.isFinite(inc.lat)) requestAnimationFrame(() => { map.resize(); map.flyTo({ center: [inc.lon, inc.lat], zoom: 14.3, speed: 1.4 }); });
 }
 function deselect() { ui.selected = null; $("legend").open = true; renderAll(); }
+
+async function resetDemo() {
+  if (ui.demoRunning) return;
+  try {
+    await API.call("reset");
+    Object.assign(store, { incidents: [], responses: [], events: [], lastEventId: store.lastEventId });
+    ui.selected = null; baseline = null; lastMetrics = null; lastIncidentCount = 0;
+    await poll();
+  } catch (err) {
+    setMode("offline", `Reset failed: ${err.message}`);
+  }
+}
 
 async function runDemo() {
   if (ui.demoRunning) return;
@@ -694,6 +707,7 @@ document.addEventListener("click", async (ev) => {
   }
 });
 $("run-demo").addEventListener("click", runDemo);
+$("reset-demo").addEventListener("click", resetDemo);
 $("new-incident").addEventListener("click", () => { $("incident-error").textContent = ""; $("incident-dialog").showModal(); });
 $("open-resources").addEventListener("click", () => { $("resources-dialog").showModal(); renderResources(); });
 $("about-open").addEventListener("click", () => $("about-dialog").showModal());
@@ -744,6 +758,7 @@ function renderAbout() {
     <p>Basemap: OpenFreeMap, © OpenMapTiles, data © OpenStreetMap contributors.</p>
     <p>Simulated decisions for a hackathon demo. Not operational advice.</p>`;
   $("foot-note").textContent = live ? `API ${API.base}` : "Mock data (in-browser)";
+  $("console-link").hidden = !live;
 }
 
 async function start() {

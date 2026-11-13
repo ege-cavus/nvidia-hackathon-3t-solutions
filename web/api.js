@@ -1,15 +1,16 @@
 "use strict";
 // The only file that knows the urban_response API. Integration = adjust the paths and the norm* field maps here.
 //
-// Assumed routes (from the Track 3 UI spec; confirm against the FastAPI OpenAPI page):
+// Live backend: urban_response serves these shapes under /ui/* (urban_response/ui_adapter.py), so the norm*
+// functions below are mostly pass-through. Route list (all prefixed with /ui):
 //   GET  /health                        -> { mode: "mock"|"live", model, fallback }
 //   GET  /incidents                     -> [incident]        POST /incidents {category, severity, lat, lon, address, description, casualties, trapped, hazards}
-//   GET  /incidents/{id}                -> incident          POST /incidents/{id}/close      POST /incidents/{id}/retry
+//   GET  /incidents/{id}/responses                           POST /incidents/{id}/close      POST /reset
 //   GET  /incidents/{id}/responses      -> [response]        GET  /responses -> [response] (all, for metrics)
 //   GET  /events?since_id=N             -> [event]
 //   GET  /resources                     -> [per-type availability]   GET /resources/{type}/forecast
 //   GET  /units?resource_type=&agency=  -> [unit]            POST /units/{id}/release
-//   GET  /stations   GET /hospitals     GET /metrics (optional)      GET /scenario (optional; else scenarios/sheffield_demo.json)
+//   GET  /stations   GET /hospitals     GET /scenario (canonical incident reports from scenarios/sheffield_demo.json)
 //
 // Normalised shapes used by app.js are documented on each norm* function. Unknown fields fall back to safe defaults.
 window.SURU_API = (function () {
@@ -48,24 +49,23 @@ window.SURU_API = (function () {
     station_id: pick(u.station_id, u.station), lat: u.lat, lon: pick(u.lon, u.lng), status: u.status, incident_id: pick(u.incident_id, null) });
   const normStation = (s) => ({ id: pick(s.id, s.station_id, s.name), name: s.name, agency: pick(s.agency, "shared"), lat: s.lat, lon: pick(s.lon, s.lng) });
 
+  const P = "/ui";
   const real = {
     mode: "live",
-    health: () => http("/health"),
-    incidents: () => http("/incidents").then((l) => l.map(normIncident)),
-    incident: (id) => http(`/incidents/${id}`).then(normIncident),
-    responses: (id) => http(id ? `/incidents/${id}/responses` : "/responses").then((l) => l.map(normResponse)),
-    events: (sinceId = 0) => http(`/events?since_id=${sinceId}`).then((l) => l.map(normEvent)),
-    stations: () => http("/stations").then((l) => l.map(normStation)),
-    hospitals: () => http("/hospitals"),
-    units: (q = {}) => http("/units?" + new URLSearchParams(q)).then((l) => l.map(normUnit)),
-    resources: () => http("/resources"),
-    forecast: (type) => http(`/resources/${type}/forecast`),
-    createIncident: (body) => http("/incidents", "POST", body).then(normIncident),
-    closeIncident: (id) => http(`/incidents/${id}/close`, "POST"),
-    retryIncident: (id) => http(`/incidents/${id}/retry`, "POST"),
-    releaseUnit: (id) => http(`/units/${id}/release`, "POST"),
-    scenario: () => http("/scenario").catch(() => fetch("scenarios/sheffield_demo.json").then((r) => r.json())),
-    metrics: () => http("/metrics").catch(() => null),
+    health: () => http(`${P}/health`),
+    incidents: () => http(`${P}/incidents`).then((l) => l.map(normIncident)),
+    responses: (id) => http(id ? `${P}/incidents/${id}/responses` : `${P}/responses`).then((l) => l.map(normResponse)),
+    events: (sinceId = 0) => http(`${P}/events?since_id=${sinceId}`).then((l) => l.map(normEvent)),
+    stations: () => http(`${P}/stations`).then((l) => l.map(normStation)),
+    hospitals: () => http(`${P}/hospitals`),
+    units: (q = {}) => http(`${P}/units?` + new URLSearchParams(q)).then((l) => l.map(normUnit)),
+    resources: () => http(`${P}/resources`),
+    forecast: (type) => http(`${P}/resources/${type}/forecast`),
+    createIncident: (body) => http(`${P}/incidents`, "POST", body),
+    closeIncident: (id) => http(`${P}/incidents/${id}/close`, "POST"),
+    releaseUnit: (id) => http(`${P}/units/${encodeURIComponent(id)}/release`, "POST"),
+    scenario: () => http(`${P}/scenario`).catch(() => fetch("scenarios/sheffield_demo.json").then((r) => r.json())),
+    reset: () => http(`${P}/reset`, "POST"),
   };
 
   return {
@@ -76,6 +76,7 @@ window.SURU_API = (function () {
     },
     get mode() { return mock ? "mock" : "live"; },
     get base() { return base; },
+    can(name) { return !!(mock || real)[name]; },
     call(name, ...args) {
       const impl = mock || real;
       if (!impl[name]) return Promise.resolve(null);
