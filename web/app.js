@@ -1,588 +1,599 @@
 "use strict";
-// SURU shared-command dashboard. Talks to web_api.py; all simulation logic stays in Python.
+// SURU command dashboard. All backend access goes through window.SURU_API (api.js); with no API address it
+// runs the in-browser mock (mock.js) so the UI can be demoed before urban_response is pushed.
 
-const AGENTS = [
-  { agency: "FIRE", sender: "NEMOTRON_FIRE", label: "A1 – Fire" },
-  { agency: "POLICE", sender: "NEMOTRON_POLICE", label: "A2 – Police" },
-  { agency: "AMBULANCE", sender: "NEMOTRON_AMBULANCE", label: "A3 – Ambulance" },
-];
-const HAZARD = { flood: "Flood", fire: "Fire", trauma: "Trauma" };
-const HUB_LETTER = { police: "P", fire: "F", ambulance: "A" };
+// ---------- vocabulary ----------
+const AGENCY = {
+  police: { label: "Police", color: "#2F6FED" },
+  fire: { label: "Fire", color: "#E5484D" },
+  ambulance: { label: "Ambulance", color: "#30A46C" },
+  shared: { label: "Shared", color: "#8E4EC6" },
+};
+const AGENTS = {
+  Qwen: { label: "Qwen", color: "#3FB8A8" },
+  A1: { label: "A1 Police", color: AGENCY.police.color },
+  A2: { label: "A2 Ambulance", color: AGENCY.ambulance.color },
+  A3: { label: "A3 Fire", color: AGENCY.fire.color },
+  CR: { label: "CR", color: "#C9D8DF" },
+  rules: { label: "Rules", color: "#7F99A4" },
+};
+const CATEGORY = {
+  rtc: "Road traffic collision", structure_fire: "Structure fire", high_rise_fire: "High-rise fire", firearms: "Firearms",
+  assault: "Assault", medical: "Medical emergency", hazmat: "Hazmat", flood: "Flood",
+};
+const CHIP_OF = { structure_fire: "fire", high_rise_fire: "fire", firearms: "police", assault: "police", medical: "medical", rtc: "traffic", hazmat: "hazmat", flood: "hazmat" };
+const SOFT_TEXT = { STAGING_INSIDE_INNER_CORDON: "Staging inside the hot zone", APPROACH_FROM_DOWNWIND: "Approach route is downwind of the hazard" };
+const STATUS = {
+  pending: ["routing", "… routing"], routing: ["routing", "… routing"], dispatched: ["ok", "✓ dispatched"],
+  partial: ["partial", "⚠ partial"], failed: ["failed", "✕ failed"], backlog: ["muted", "backlog"], closed: ["muted", "closed"],
+};
+const SEV_COLOR = { 5: "#FF5A5F", 4: "#FF8B3D", 3: "#F5B300", 2: "#8FA9B5", 1: "#5E7682" };
+const ICON_PATH = {
+  police: "M8 1.5 2.5 3.5v4c0 3.3 2.3 5.9 5.5 7 3.2-1.1 5.5-3.7 5.5-7v-4z",
+  fire: "M8 1.5c.6 2.3 3.8 3.9 3.8 7.4A3.8 3.8 0 0 1 8 14.6a3.8 3.8 0 0 1-3.8-3.7c0-1.7.9-2.8 1.9-3.6.1 1.1.6 1.9 1.4 2.3C7 7 7.4 3.8 8 1.5z",
+  ambulance: "M6 2h4v4h4v4h-4v4H6v-4H2V6h4z",
+  shared: "M8 1.5l5.6 3.25v6.5L8 14.5l-5.6-3.25v-6.5z",
+};
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : "");
+const categoryText = (c) => CATEGORY[c] || cap(String(c || "other").replace(/_/g, " "));
+const softText = (code) => SOFT_TEXT[code] || cap(String(code || "").toLowerCase().replace(/_/g, " "));
+const chipOf = (inc) => CHIP_OF[inc.category] || "other";
+const agencyOf = (a) => AGENCY[a] || AGENCY.shared;
+const statusOf = (s) => STATUS[s] || ["muted", s || "unknown"];
+const pill = (s) => { const [cls, text] = statusOf(s); return `<span class="pill ${cls}">${esc(text)}</span>`; };
+const icon = (agency, lead = false) => `<span class="ag-icon ${lead ? "lead" : ""}" style="--c:${agencyOf(agency).color}" title="${esc(agencyOf(agency).label)}${lead ? " (lead)" : ""}"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="${ICON_PATH[agency] || ICON_PATH.shared}"/></svg></span>`;
+const agencyChip = (agency) => `<span class="chip-ag" style="--c:${agencyOf(agency).color}">${esc(agencyOf(agency).label)}</span>`;
+const timeOf = (ts) => (ts ? new Date(ts).toLocaleTimeString("en-GB", { hour12: false }) : "");
+const minsSince = (ts) => (ts ? Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 60000)) : null);
+const pct = (n, d) => (d ? Math.round((n / d) * 100) : null);
 
-let api = "";
-let data = null;
-let map = null;
-const markers = new Map();
-const hidden = new Set();
-let openCam = null;
+// ---------- state ----------
+const API = window.SURU_API;
+const store = { health: null, incidents: [], responses: [], events: [], lastEventId: 0, stations: [] };
+const ui = { selected: null, chips: new Set(), tab: "summary", feedPaused: false, feedPending: 0, expandedEvents: new Set(), demoRunning: false };
+let baseline = null, lastMetrics = null, lastIncidentCount = 0;
 
-// ---------- backend ----------
-function resolveApi() {
-  const fromQuery = new URLSearchParams(location.search).get("api");
-  let stored = null;
-  try { stored = localStorage.getItem("suru-api"); } catch { /* storage blocked */ }
-  return (fromQuery || stored || window.SURU_API_BASE || "").replace(/\/+$/, "");
+// ---------- data ----------
+function latestResponse(id) {
+  let best = null;
+  for (const r of store.responses) if (r.incident_id === id && (!best || new Date(r.created_at) >= new Date(best.created_at))) best = r;
+  return best;
 }
-function remember(url) { try { localStorage.setItem("suru-api", url); } catch { /* storage blocked */ } }
+const incidentOf = (id) => store.incidents.find((i) => i.id === id);
+const visible = (inc) => ui.chips.size === 0 || ui.chips.has(chipOf(inc));
 
-async function call(path, method = "GET") {
-  const res = await fetch(api + path, { method });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
-  return body;
-}
-
-function setConn(text, cls) { const el = $("conn"); el.textContent = text; el.className = "conn " + (cls || ""); }
-
-async function connect(url) {
-  api = url;
-  setConn("Connecting…");
-  const [state, roads] = await Promise.all([call("/api/state"), call("/api/roads")]);
-  remember(url);
-  setConn("Backend connected", "ok");
-  drawRoads(roads);
-  render(state);
-  if (data.pipeline.running && !polling) pollWhileRunning();  // reopened mid-run
-  if (!telemTimer) { pollTelemetry(); telemTimer = setInterval(pollTelemetry, 3000); }
-}
-
-// The pipeline runs in a backend worker; while it runs, poll so agent messages appear as they land.
-let polling = false;
-async function action(path) {
+async function poll() {
   try {
-    const live = $("live").checked ? "?live=1" : "";
-    render(await call(path + live, "POST"));
-    setConn("Backend connected", "ok");
-    if (data.pipeline.running && !polling) pollWhileRunning();
-  } catch (err) {
-    setConn("Request failed: " + err.message, "bad");
-  }
-}
-
-async function pollWhileRunning() {
-  polling = true;
-  try {
-    while (data.pipeline.running) {
-      await new Promise((r) => setTimeout(r, 800));
-      render(await call("/api/state"));
+    const [incidents, responses, events] = await Promise.all([API.call("incidents"), API.call("responses"), API.call("events", store.lastEventId)]);
+    store.incidents = incidents || [];
+    store.responses = responses || [];
+    if (events && events.length) {
+      store.events.push(...events);
+      store.lastEventId = Math.max(store.lastEventId, ...events.map((e) => e.id));
+      if (ui.feedPaused) ui.feedPending += events.length;
     }
+    $("live-dot").classList.toggle("on", !ui.feedPaused);
+    renderAll();
   } catch (err) {
-    setConn("Lost backend: " + err.message, "bad");
-  } finally {
-    polling = false;
+    $("live-dot").classList.remove("on");
+    setMode("offline", `API unreachable: ${err.message}`);
   }
 }
 
-function renderControls(p) {
-  ["advance", "retry", "reset"].forEach((id) => ($(id).disabled = p.running));
-  $("advance").textContent = p.running ? `Agents running ${Math.floor(p.elapsed_seconds)} s` : "Advance tick";
-}
-
-// ---------- compute telemetry ----------
-let telem = null;
-let telemTimer = null;
-const gpuHistory = [];
-async function pollTelemetry() {
+async function pollHealth() {
   try {
-    telem = await call("/api/telemetry");
-    const gpu = telem.gpu.available ? telem.gpu.gpus[0] : null;
-    if (gpu && gpu.util_pct != null) { gpuHistory.push(gpu.util_pct); if (gpuHistory.length > 40) gpuHistory.shift(); }
-    renderTelemetry();
-    if (data) renderAgents(data);
-  } catch { /* connection state is reported by the state calls */ }
-}
-
-function meter(label, value, pct, note = "") {
-  const width = pct == null ? 0 : Math.max(0, Math.min(100, pct));
-  return `<div class="meter"><div class="meter-row"><span>${label}</span><strong>${value}</strong></div>
-    <div class="meter-bar"><span style="width:${width}%"></span></div>${note ? `<p class="meter-note">${note}</p>` : ""}</div>`;
-}
-
-function historyLine(values) {
-  if (values.length < 5) return "";
-  const pts = values.map((v, i) => `${(i / 39) * 300},${36 - (v / 100) * 34}`).join(" ");
-  return `<svg class="history" viewBox="0 0 300 38" preserveAspectRatio="none" aria-label="GPU utilisation, last two minutes"><polyline points="${pts}"/></svg>`;
-}
-
-function renderTelemetry() {
-  const t = telem, gpu = t.gpu.available ? t.gpu.gpus[0] : null;
-  $("hw-host").textContent = `${gpu ? gpu.name : "No NVIDIA GPU detected"} – host ${t.host}`;
-  const unified = gpu && gpu.mem_total_mb == null;
-  const parts = [];
-  if (gpu) {
-    parts.push(meter("GPU utilisation", gpu.util_pct == null ? "n/a" : gpu.util_pct + "%", gpu.util_pct) + historyLine(gpuHistory));
-    if (!unified && gpu.mem_total_mb) parts.push(meter("GPU memory", `${(gpu.mem_used_mb / 1024).toFixed(1)} / ${(gpu.mem_total_mb / 1024).toFixed(1)} GB`, (gpu.mem_used_mb / gpu.mem_total_mb) * 100));
+    store.health = await API.call("health");
+    const h = store.health || {};
+    if (API.mode === "mock") setMode("mock", "mock – in-browser demo data");
+    else if (h.fallback) setMode("fallback", `${h.mode === "live" ? "live" : "mock"} – fallback in last response`);
+    else if (h.mode === "live") setMode("live", `live – ${h.model || "nemotron"}`);
+    else setMode("mock", "mock");
+  } catch (err) {
+    setMode("offline", "API unreachable");
   }
-  parts.push(meter(unified ? "Unified memory" : "System memory", `${t.memory.used_gb} / ${t.memory.total_gb} GB`, t.memory.pct));
-  parts.push(meter("CPU", Math.round(t.cpu_pct) + "%", t.cpu_pct));
-  if (gpu) parts.push(`<dl class="stats"><div><dt>Power</dt><dd>${gpu.power_w == null ? "n/a" : Math.round(gpu.power_w) + " W"}</dd></div><div><dt>GPU temp</dt><dd>${gpu.temp_c == null ? "n/a" : Math.round(gpu.temp_c) + " °C"}</dd></div></dl>`);
-  const o = t.ollama;
-  parts.push(o.reachable
-    ? `<div class="loaded"><h3>Models in memory</h3>${o.models.length ? `<ul>${o.models.map((m) => `<li><span>${esc(m.name)}</span><span>${m.size_gb} GB</span></li>`).join("")}</ul>` : `<p class="fine">None loaded. Ollama loads a model on its first call.</p>`}</div>`
-    : `<p class="fine">Ollama not reachable at ${esc(o.host)}. Agents run on offline rules.</p>`);
-  $("hw").innerHTML = parts.join("");
 }
+function setMode(cls, text) { const el = $("mode"); el.className = "mode " + cls; el.textContent = text; }
 
-// ---------- agents ----------
-const AGENT_ROWS = [
-  { sender: "QWEN_TRIAGE", label: "Qwen triage", model: "qwen" },
-  { sender: "NEMOTRON_FIRE", label: "A1 – Fire", model: "nemotron" },
-  { sender: "NEMOTRON_POLICE", label: "A2 – Police", model: "nemotron" },
-  { sender: "NEMOTRON_AMBULANCE", label: "A3 – Ambulance", model: "nemotron" },
-  { sender: "A_CR", label: "A_cr – Config resolution", model: null },
-  { sender: "QWEN_GOLD_ARBITER", label: "Qwen Gold Arbiter", model: "qwen" },
-];
-
-function renderAgents(snap) {
-  const p = snap.pipeline, board = snap.state.message_board, tick = snap.state.tick;
-  $("pipeline").className = "sys-pipeline " + (p.running ? "running" : p.error ? "error" : "");
-  $("pipeline").textContent = p.running ? `Running tick ${tick} with ${p.live ? "live models" : "offline rules"} – ${Math.floor(p.elapsed_seconds)} s`
-    : p.error ? `Last run failed: ${p.error}`
-    : p.last_seconds != null ? `Idle – last round took ${p.last_seconds} s with ${p.live ? "live models" : "offline rules"}` : "Idle – advance a tick to run the agents";
-  $("agents").innerHTML = AGENT_ROWS.map((a) => {
-    const mine = board.filter((e) => e.sender === a.sender);
-    const last = mine[mine.length - 1];
-    const model = a.model ? (p.live ? (telem ? telem.models[a.model] : "…") : "Offline rules") : "Not yet active (#3)";
-    const now = last && last.tick === tick;
-    const state = !a.model ? "Planned" : now ? (p.running ? "Posted just now" : "Active this tick") : last ? `Last active tick ${last.tick}` : "No activity yet";
-    const body = last ? `<span class="agent-last"><b>${esc(last.incident_cam)}</b> ${esc(last.proposal_text)}</span>` : "";
-    const tag = last ? "button" : "div";
-    return `<li><${tag} class="agent ${now ? "now" : ""} ${a.model ? "" : "planned"}" ${last ? `type="button" data-cam="${esc(last.incident_cam)}"` : ""}>
-      <span class="agent-top"><span class="agent-name">${esc(a.label)}</span><span class="agent-state">${state}</span></span>
-      <span class="agent-model">${esc(model)}${mine.length ? ` – ${mine.length} message${mine.length > 1 ? "s" : ""}` : ""}</span>${body}</${tag}></li>`;
-  }).join("");
-}
-
-// ---------- derived state ----------
-function sevClass(s) { return s >= 8 ? "high" : s >= 5 ? "mid" : "low"; }
-function boardFor(cam) { return data.state.message_board.filter((e) => e.incident_cam === cam); }
-
-function progressOf(inc) {
-  const units = Object.entries(data.state.resource_db).filter(([, u]) => u.assigned_cam === inc.cam_id);
-  const names = units.map(([id]) => id).join(", ");
-  const entries = boardFor(inc.cam_id);
-  const last = entries[entries.length - 1];
-  if (inc.status === "RESOLVED") return { pct: 100, text: "Resolved" };
-  if (inc.status === "UNITS_DISPATCHED") {
-    const onScene = units.some(([, u]) => u.status === "DEPLETED_ON_SCENE") || inc.response_ticks != null;
-    return onScene ? { pct: 80, text: "On scene – " + names } : { pct: 60, text: "Units en route – " + names };
+// ---------- metrics ----------
+function computeMetrics() {
+  const latest = store.incidents.map((i) => latestResponse(i.id)).filter(Boolean);
+  let requested = 0, allocated = 0, etaTotal = 0, etaMet = 0, hard = 0, autoResolved = 0;
+  for (const r of latest) {
+    for (const a of r.agent_responses) for (const q of a.requests || []) requested += q.qty || 0;
+    allocated += r.allocations.length;
+    for (const a of r.allocations) if (a.max_eta_min != null && a.eta_min != null) { etaTotal += 1; if (a.eta_min <= a.max_eta_min) etaMet += 1; }
+    for (const h of r.hard_conflicts) { hard += 1; if (!h.overridden) autoResolved += 1; }
   }
-  // A deadlocked arbiter or pipeline entry is the last word for that tick: dispatch was deferred.
-  if (last && last.consensus_status === "DEADLOCK_TIMEOUT" && !isAgency(last))
-    return { pct: 45, text: "Deferred: retry next tick", deferred: true };
-  if (inc.status === "QWEN_ARBITRATING") return { pct: 45, text: "Arbiter deciding" };
-  if (inc.status === "NEMOTRON_NEGOTIATING") return { pct: 30, text: "Agencies proposing" };
-  return { pct: 10, text: "Awaiting triage" };
+  return {
+    success: pct(latest.filter((r) => r.status === "dispatched").length, latest.length),
+    fill: pct(allocated, requested), eta: pct(etaMet, etaTotal), hard, autoResolved,
+  };
 }
 
-// ---------- render ----------
-function render(snapshot) {
-  data = snapshot;
-  const s = data.state;
-  $("tick").textContent = "Tick " + s.tick;
-  const mode = s.routing.mode;
-  $("graph-note").textContent = mode.startsWith("synthetic") ? "Synthetic graph – invented links, not real streets" : "OSM road graph – estimated speeds";
-  renderControls(data.pipeline);
-  renderAgents(data);
-  renderGantry(s);
-  renderIncidents(s);
-  renderMap(s);
-  renderCams(s);
-  renderBoard(s);
-  renderUnits(s);
-  renderRules(s);
-  if (openCam && $("highway").open) renderHighway(openCam, true);
+function renderMetrics() {
+  const m = computeMetrics();
+  if (store.incidents.length !== lastIncidentCount) { baseline = lastMetrics; lastIncidentCount = store.incidents.length; }
+  lastMetrics = m;
+  const band = (v) => (v == null ? "none" : v >= 80 ? "good" : v >= 60 ? "warn" : "bad");
+  const delta = (key) => {
+    if (!baseline || baseline[key] == null || m[key] == null || baseline[key] === m[key]) return "";
+    const d = m[key] - baseline[key];
+    return `<span class="delta ${d > 0 ? "up" : "down"}">${d > 0 ? "▲" : "▼"} ${Math.abs(d)}</span>`;
+  };
+  const cell = (key, label, def, headline = false) => `<div class="metric ${headline ? "headline" : ""} ${band(m[key])}" title="${esc(def)}">
+      <span class="m-label">${label}</span><span class="m-value">${m[key] == null ? "—" : m[key] + "%"}${delta(key)}</span></div>`;
+  $("metrics").innerHTML =
+    cell("success", "Response success", "Share of incidents whose latest response is dispatched: every essential request met.", true) +
+    cell("fill", "Fill rate", "Allocated units ÷ requested units across the latest responses.") +
+    cell("eta", "ETA met", "Allocations arriving within the requesting agent's maximum ETA ÷ allocations with an ETA requirement.") +
+    `<div class="metric ${band(pct(m.autoResolved, m.hard))}" title="Hard conflicts where CR's choice passed re-validation ÷ all hard conflicts.">
+      <span class="m-label">Conflicts auto-resolved</span><span class="m-value">${m.hard ? `${m.autoResolved}/${m.hard}` : "—"}</span></div>`;
 }
 
-function renderGantry(s) {
-  const m = s.effectiveness_metrics;
-  const units = Object.values(s.resource_db);
-  const free = units.filter((u) => u.status === "AVAILABLE" && u.total_depletion_ticks_remaining === 0).length;
-  const cells = [
-    ["Score", Math.round(m.overall_score), "/100", `Spillovers ${m.spillovers_occurred} occurred – ${m.spillovers_prevented} prevented`],
-    ["Resolved", m.incidents_resolved, "", "Incidents closed"],
-    ["SLA met", m.sla_met_count, "", "First arrival ≤ 7 ticks"],
-    ["SLA missed", m.sla_missed_count, "", "First arrival > 7 ticks"],
-    ["Mean response", m.avg_response_ticks.toFixed(1), "ticks", "Spawn to first arrival"],
-    ["Units free", free, "/ " + units.length, "Dispatchable now"],
-  ];
-  $("gantry").innerHTML = cells.map(([t, v, u, note]) =>
-    `<dl class="kpi"><dt>${t}</dt><dd>${v}<small>${u}</small></dd><p>${note}</p></dl>`).join("");
+// ---------- incident list ----------
+function card(inc) {
+  const routed = inc.routed_agencies || [];
+  const mins = minsSince(inc.received_at);
+  return `<button type="button" class="card ${ui.selected === inc.id ? "selected" : ""}" data-select="${esc(inc.id)}" aria-pressed="${ui.selected === inc.id}">
+    <span class="card-top"><i class="sev-dot" style="background:${SEV_COLOR[inc.severity] || SEV_COLOR[1]}"></i><b>${esc(inc.id)}</b><span class="sev" style="--c:${SEV_COLOR[inc.severity] || SEV_COLOR[1]}">SEV ${inc.severity}</span></span>
+    <span class="card-cat">${esc(categoryText(inc.category))}</span>
+    <span class="card-meta">${esc(inc.district || inc.address)}${mins != null ? ` – ${mins} min` : ""}</span>
+    <span class="card-foot">${pill(inc.status)}<span class="icons">${routed.map((a) => icon(a, a === inc.lead_agency)).join("")}</span></span>
+  </button>`;
 }
 
-function renderIncidents(s) {
-  const all = Object.values(s.active_incidents);
-  const active = all.filter((i) => i.status !== "RESOLVED").sort((a, b) => b.severity - a.severity || a.spawn_tick - b.spawn_tick);
-  const resolved = all.filter((i) => i.status === "RESOLVED");
-  $("inc-count").textContent = `– ${active.length} active`;
-  if (!all.length) {
-    $("incidents").innerHTML = `<p class="empty">No incidents yet. Advance a tick to start the Seed-42 scenario.</p>`;
-    return;
-  }
-  $("incidents").innerHTML = [...active, ...resolved].map((inc) => {
-    const p = progressOf(inc);
-    const cam = data.cameras[inc.cam_id];
-    return `<article class="incident ${inc.status === "RESOLVED" ? "resolved" : ""}">
-      <div class="inc-top"><span>${esc(inc.cam_id)} – since tick ${inc.spawn_tick}</span><span class="sev ${sevClass(inc.severity)}">SEV ${inc.severity}</span></div>
-      <h3>${esc(cam ? cam.name : inc.cam_id)}</h3>
-      <p class="inc-meta">${HAZARD[inc.hazard] || esc(inc.hazard)}${inc.road_blocked ? " – Road blocked" : ""}</p>
-      <div class="progress ${p.deferred ? "deferred" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${p.pct}" aria-label="Response progress"><span style="width:${p.pct}%"></span></div>
-      <p class="stage ${p.deferred ? "deferred" : ""}">${esc(p.text)}</p>
-      <button class="link-btn" type="button" data-cam="${esc(inc.cam_id)}">Open mediation highway</button>
-    </article>`;
-  }).join("");
+function renderList() {
+  const shown = store.incidents.filter(visible).sort((a, b) => b.severity - a.severity || new Date(b.received_at) - new Date(a.received_at));
+  const ongoing = shown.filter((i) => i.status !== "closed" && i.status !== "backlog");
+  const backlog = shown.filter((i) => i.status === "backlog");
+  const closed = shown.filter((i) => i.status === "closed");
+  $("ongoing-count").textContent = ongoing.length ? `– ${ongoing.length}` : "";
+  $("ongoing").innerHTML = ongoing.length ? ongoing.map(card).join("")
+    : `<p class="empty">${store.incidents.length ? "No ongoing incidents match this filter." : "No incidents yet. Press ▶ Run demo scenario."}</p>`;
+  $("backlog-count").textContent = `(${backlog.length})`;
+  $("backlog").innerHTML = backlog.map(card).join("");
+  $("closed-count").textContent = `(${closed.length})`;
+  $("closed").innerHTML = closed.map(card).join("");
+  const hasOther = store.incidents.some((i) => chipOf(i) === "other");
+  document.querySelector('[data-chip="other"]').hidden = !hasOther;
 }
 
 // ---------- map ----------
-function initMap() {
-  if (typeof maplibregl === "undefined") {
-    $("map").innerHTML = `<div class="map-fallback">Map library could not load (offline?). Incidents and tables still update.</div>`;
-    return;
+let map = null;
+const routingMarkers = new Map();
+const dynMarkers = [];
+const ringCoords = (lat, lon, m) => {
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    pts.push([lon + (m / (111320 * Math.cos((lat * Math.PI) / 180))) * Math.cos(t), lat + (m / 111320) * Math.sin(t)]);
   }
-  // Keyless OpenFreeMap vector basemap (OSM data); overlays are added once it loads.
-  map = new maplibregl.Map({
-    container: "map",
-    bounds: [[-1.53, 53.372], [-1.40, 53.418]],
-    // Asymmetric padding leaves room for station tags, which extend right of their markers.
-    fitBoundsOptions: { padding: $("map").clientWidth > 600 ? { top: 40, bottom: 50, left: 40, right: 110 } : 16 },
-    attributionControl: { compact: true },
-    style: "https://tiles.openfreemap.org/styles/fiord",
-  });
-  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-  map.on("load", tintBasemap);
-}
-
-// Pull the fiord basemap onto the dashboard's asphalt ground; layers missing from a future style are skipped.
+  return pts;
+};
 const BASEMAP_PAINT = {
   background: { "background-color": "#0a1a22" }, water: { "fill-color": "#0d2c3a" }, waterway: { "line-color": "#0d2c3a" },
   landuse_residential: { "fill-color": "#0c1e27" }, landcover_wood: { "fill-color": "#0d2421" }, park: { "fill-color": "#0d2421" },
   park_outline: { "line-color": "#12302b" }, building: { "fill-color": "#10242e" }, highway_path: { "line-color": "#16303b" },
   highway_minor: { "line-color": "#2a4552" }, highway_major_casing: { "line-color": "#36586a" }, highway_major_inner: { "line-color": "#1b3441" },
-  highway_major_subtle: { "line-color": "#1b3441" }, highway_motorway_casing: { "line-color": "#3c6178" },
-  highway_motorway_inner: { "line-color": "#1d3a4c" }, railway: { "line-color": "#1a2f38" },
-  highway_name_other: { "text-color": "#7f99a4", "text-halo-color": "#0a1a22" }, highway_ref: { "text-color": "#c9d8df", "text-halo-color": "#1f5aa6" },
+  highway_major_subtle: { "line-color": "#1b3441" }, highway_motorway_casing: { "line-color": "#3c6178" }, highway_motorway_inner: { "line-color": "#1d3a4c" },
+  railway: { "line-color": "#1a2f38" }, highway_name_other: { "text-color": "#7f99a4", "text-halo-color": "#0a1a22" },
   place_other: { "text-color": "#9db3bd", "text-halo-color": "#0a1a22" }, place_suburb: { "text-color": "#9db3bd", "text-halo-color": "#0a1a22" },
   place_village: { "text-color": "#9db3bd", "text-halo-color": "#0a1a22" }, place_town: { "text-color": "#c9d8df", "text-halo-color": "#0a1a22" },
-  place_city: { "text-color": "#c9d8df", "text-halo-color": "#0a1a22" }, water_name: { "text-color": "#6f8f9c", "text-halo-color": "#0a1a22" },
+  place_city: { "text-color": "#c9d8df", "text-halo-color": "#0a1a22" },
 };
-function tintBasemap() {
-  for (const [layer, paint] of Object.entries(BASEMAP_PAINT))
-    if (map.getLayer(layer)) for (const [prop, value] of Object.entries(paint)) map.setPaintProperty(layer, prop, value);
-}
-function stationName(hub) {
-  const inParens = hub.name.match(/\(([^)]+)\)/);
-  return inParens ? inParens[1] : hub.name.replace(/ (Police Station|Fire Station|Hospital A&E|Hospital)$/, "");
-}
-const AGENCY_SHORT = { POLICE: "POL", FIRE: "FIRE", AMBULANCE: "AMB" };
 
-function whenMap(fn) { if (!map) return; map.loaded() ? fn() : map.once("load", fn); }
-
-function drawRoads(roads) {
-  whenMap(() => {
-    const synthetic = roads.mode.startsWith("synthetic");
-    // Invented straight links clutter a real street basemap; show them only on request.
-    const box = document.querySelector('.layers input[data-layer="roads"]');
-    box.checked = !synthetic;
-    synthetic ? hidden.add("roads") : hidden.delete("roads");
-    box.parentElement.lastChild.textContent = synthetic ? " Synthetic road graph" : " OSM road graph";
-    if (map.getSource("roads")) map.getSource("roads").setData(roads.roads);
-    else {
-      map.addSource("roads", { type: "geojson", data: roads.roads });
-      map.addLayer({ id: "roads", type: "line", source: "roads", paint: {
-        "line-color": "#5b7f8f", "line-width": synthetic ? 1.5 : 1, "line-opacity": 0.8,
-        ...(synthetic ? { "line-dasharray": [2, 2] } : {}) } });
-      map.addSource("routes", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
-      map.addLayer({ id: "routes", type: "line", source: "routes", layout: { "line-cap": "round", "line-join": "round" },
-        paint: { "line-color": "#f2c300", "line-width": 3.5 } });
-    }
-    applyLayers();
-    if (data) renderMap(data.state);
-  });
+function triangleImage(color) {
+  const s = 28, c = document.createElement("canvas");
+  c.width = c.height = s;
+  const g = c.getContext("2d");
+  g.beginPath(); g.moveTo(s / 2, 4); g.lineTo(s - 4, s - 5); g.lineTo(4, s - 5); g.closePath();
+  g.fillStyle = color; g.fill(); g.lineWidth = 2.5; g.strokeStyle = "#0a1a22"; g.stroke();
+  return g.getImageData(0, 0, s, s);
 }
 
-function placeMarker(key, lngLat, el, title) {
-  // The wrapper keeps MapLibre's positioning classes; only its content is swapped on update.
-  let m = markers.get(key);
-  if (!m) { m = new maplibregl.Marker({ element: document.createElement("div"), anchor: "center" }).setLngLat(lngLat).addTo(map); markers.set(key, m); }
-  else m.setLngLat(lngLat);
-  m.getElement().replaceChildren(el);
-  // Incidents on top, then station tags (they carry stock text), then moving unit dots.
-  m.getElement().style.zIndex = key.startsWith("inc:") ? 3 : key.startsWith("hub:") ? 2 : 1;
-  el.title = title;
-  return m;
-}
-
-function renderMap(s) {
-  if (!map || !map.getSource("routes")) return;
-  const units = Object.entries(s.resource_db);
-  const keep = new Set();
-  for (const [hubId, hub] of Object.entries(data.hubs)) {
-    const own = units.filter(([, u]) => u.home_hub === hubId);
-    const free = own.filter(([, u]) => u.status === "AVAILABLE").length;
-    const el = document.createElement("div");
-    // shortcut: Royal Hallamshire sits just west of Eyre St, so its tag goes left; replace with collision layout if hubs become data-driven.
-    el.className = `mk mk-station ${free ? "" : "depleted"} ${hubId === "NHS_ROYAL_HALLAM" ? "tag-left" : ""}`;
-    el.innerHTML = `<i>${HUB_LETTER[hub.type]}</i><span class="mk-tag">${esc(stationName(hub))} <b>${free}/${own.length}</b></span>`;
-    placeMarker("hub:" + hubId, [hub.lon, hub.lat], el, `${hub.name}: ${free} of ${own.length} ${own.length ? AGENCY_SHORT[own[0][1].agency] : ""} vehicles free (${own.map(([id, u]) => id + " " + u.status).join(", ")})`);
-    keep.add("hub:" + hubId);
-  }
-  for (const inc of Object.values(s.active_incidents)) {
-    if (inc.status === "RESOLVED") continue;
-    const el = document.createElement("button");
-    el.type = "button";
-    el.className = `mk mk-incident ${sevClass(inc.severity)}`;
-    el.dataset.cam = inc.cam_id;
-    el.innerHTML = `<i></i><span class="mk-tag">${esc(inc.cam_id)} – SEV ${inc.severity}</span>`;
-    placeMarker("inc:" + inc.cam_id, [inc.location.lon, inc.location.lat], el, `${data.cameras[inc.cam_id]?.name}: ${HAZARD[inc.hazard]} severity ${inc.severity}. Click for the mediation highway.`);
-    keep.add("inc:" + inc.cam_id);
-  }
-  const features = [];
-  for (const [id, u] of units) {
-    // Units restocking at their own base are shown by the station's stock, not a separate dot.
-    if (u.status === "AVAILABLE" || u.status === "DEPLETED_COOLDOWN") continue;
-    const el = document.createElement("div");
-    el.className = "mk mk-unit";
-    el.innerHTML = "<i></i>";
-    placeMarker("unit:" + id, [u.lon, u.lat], el, `${id}: ${u.status}, ${u.total_depletion_ticks_remaining} ticks until available`);
-    keep.add("unit:" + id);
-    const route = u.phases && u.phases[0] && u.phases[0].route;
-    if (route) features.push({ type: "Feature", properties: { id }, geometry: { type: "LineString", coordinates: route.path } });
-  }
-  map.getSource("routes").setData({ type: "FeatureCollection", features });
-  for (const [key, m] of markers) if (!keep.has(key)) { m.remove(); markers.delete(key); }
-  applyLayers();
-}
-
-function applyLayers() {
-  if (!map) return;
-  for (const id of ["roads", "routes"]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", hidden.has(id) ? "none" : "visible");
-  for (const [key, m] of markers) {
-    const layer = key.startsWith("hub:") ? "stations" : key.startsWith("unit:") ? "units" : null;
-    m.getElement().style.display = layer && hidden.has(layer) ? "none" : "";
-  }
-}
-
-// ---------- tabs ----------
-function renderCams(s) {
-  $("tab-cams").innerHTML = `<div class="cams">${Object.entries(data.cameras).map(([cam, c]) => {
-    const inc = s.active_incidents[cam];
-    const media = c.video ? `<video src="${esc(api)}/api/media/${cam}.mp4" muted loop autoplay playsinline></video>`
-      : c.frame ? `<img src="${esc(api)}/api/media/${cam}.jpg" alt="First frame from ${esc(c.name)}">`
-      : `<div class="placeholder">Awaiting local Cosmos clip: assets/hero_cams_disaster/${cam}.mp4</div>`;
-    const report = inc && inc.qwen_report && inc.qwen_report.summary
-      ? `<span>${esc(inc.qwen_report.summary)}</span><span class="muted">Agencies woken: ${esc(inc.qwen_report.required_agencies.join(", "))}</span>`
-      : `<span class="muted">${inc ? "Awaiting triage" : "No incident"}</span>`;
-    return `<figure class="cam" style="margin:0">${media}<figcaption class="cam-body"><strong>${cam} – ${esc(c.name)}</strong>${report}</figcaption></figure>`;
-  }).join("")}</div>`;
-}
-
-function statusCell(st) {
-  const cls = { AGREED: "agreed", QWEN_OVERRIDDEN: "agreed", DEADLOCK_TIMEOUT: "deadlock" }[st] || "";
-  return `<span class="status ${cls}">${esc(st)}</span>`;
-}
-
-function boardTable(entries) {
-  if (!entries.length) return `<tbody><tr><td class="fine">No board entries yet.</td></tr></tbody>`;
-  return `<thead><tr><th>Tick</th><th>Camera</th><th>Sender</th><th>Proposal and reasoning</th><th>Units</th><th>Status</th></tr></thead><tbody>${
-    entries.slice().reverse().map((e) => `<tr><td class="num">${e.tick}</td><td>${esc(e.incident_cam)}</td><td>${esc(e.sender)}</td><td>${esc(e.proposal_text)}</td><td>${esc((e.proposed_units || []).join(", "))}</td><td>${statusCell(e.consensus_status)}</td></tr>`).join("")}</tbody>`;
-}
-
-function renderBoard(s) {
-  $("tab-board").innerHTML = `<div class="table-wrap"><table class="data">${boardTable(s.message_board)}</table></div>`;
-}
-
-function renderUnits(s) {
-  const rows = Object.entries(s.resource_db).map(([id, u]) => `<tr><td><strong>${id}</strong></td><td>${esc(u.agency)}</td><td>${esc(data.hubs[u.home_hub]?.name || u.home_hub)}</td><td>${esc(u.status)}</td><td>${esc(u.assigned_cam || "")}</td>
-    <td class="num">${u.travel_to_scene_ticks}</td><td class="num">${u.on_scene_ticks}</td><td class="num">${u.return_to_base_ticks}</td><td class="num">${u.cooldown_ticks_remaining}</td><td class="num"><strong>${u.total_depletion_ticks_remaining}</strong></td></tr>`).join("");
-  $("tab-units").innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Unit</th><th>Agency</th><th>Home base</th><th>Status</th><th>Incident</th><th>Travel</th><th>On scene</th><th>Return</th><th>Cooldown</th><th>Total ticks</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="fine">Total = travel + on scene + return + cooldown, in one-minute ticks. On-scene work can extend if the hazard escalates; police hold until severity is below 4. Personnel numbers are not modelled.</p>`;
-}
-
-function renderRules(s) {
-  const src = Object.entries(data.sources).map(([k, url]) => `<li><a href="${esc(url)}" target="_blank" rel="noopener">${esc(k)}</a></li>`).join("");
-  $("tab-rules").innerHTML = `<div class="rules">
-    <p><strong>Road graph:</strong> ${esc(s.routing.mode)}. Synthetic graphs use invented links and a 30 km/h assumption; OSM travel times use inferred speeds, not real arrival times.</p>
-    <p><strong>Score</strong> = clamp(100 − 5 × SLA misses − 3 × spillovers + resolved, 0, 100). SLA counts first arrival within 7 ticks. These are game metrics.</p>
-    <p>Risk priors are synthetic and uncalibrated. Numeric pumps, cordons and cooldowns are simulation rules, not verified SYFR, SYP or YAS procedures. Station coordinates are team-supplied demonstration deployments.</p>
-    <p>A1, A2 and A3 are the Nemotron agency agents. A_cr, the config resolution agent grounded in JESIP doctrine, is proposed in issue #3 and not yet active.</p>
-    <p>Public context sources:</p><ul>${src}</ul>
-    <p class="fine">Simulated output for a hackathon demo. Never operational advice.</p></div>`;
-}
-
-// ---------- mediation highway ----------
-const POS = {
-  triage: [85, 215], consensus: [825, 215], outcome: [1035, 215], arbiter: [930, 370], acr: [455, 215],
-  r1: { FIRE: [265, 85], POLICE: [265, 215], AMBULANCE: [265, 345] },
-  r2: { FIRE: [645, 85], POLICE: [645, 215], AMBULANCE: [645, 345] },
-};
-const NW = 150, NH = 50;
-const isAgency = (e) => e.sender.startsWith("NEMOTRON_");
-const edgeStatus = (st) => ({ AGREED: "agreed", QWEN_OVERRIDDEN: "agreed", DEADLOCK_TIMEOUT: "deadlock" }[st] || "pending");
-
-function highwayModel(cam, tick) {
-  const inc = data.state.active_incidents[cam];
-  const all = boardFor(cam);
-  const es = all.filter((e) => e.tick === tick);
-  const triage = all.find((e) => e.sender === "QWEN_TRIAGE" && !e.proposal_text.startsWith("Pipeline deferred"));
-  const pipelineFail = es.find((e) => e.sender === "QWEN_TRIAGE" && e.proposal_text.startsWith("Pipeline deferred"));
-  const selected = (inc.qwen_report && inc.qwen_report.required_agencies) || [];
-  const acrIndex = es.findIndex((e) => e.sender === "A_CR");
-  const acr = acrIndex >= 0 ? es[acrIndex] : null;
-  const round = (e, i) => e.round ?? (acrIndex >= 0 && i > acrIndex ? 2 : 1);
-  const r1 = {}, r2 = {};
-  es.forEach((e, i) => { if (isAgency(e)) (round(e, i) === 2 ? r2 : r1)[e.sender.replace("NEMOTRON_", "")] = e; });
-  const arb = es.find((e) => e.sender === "QWEN_GOLD_ARBITER");
-  const agreed = es.some((e) => isAgency(e) && e.consensus_status === "AGREED");
-
-  const nodes = [{ id: "triage", t1: "Qwen triage", t2: "QWEN_TRIAGE", fill: "#1f5aa6", active: !!triage }];
-  for (const a of AGENTS) {
-    nodes.push({ id: "r1:" + a.agency, pos: POS.r1[a.agency], t1: a.label, t2: selected.includes(a.agency) ? (acr ? "Round 1 proposal" : a.sender) : "Not woken", fill: "#00703c", active: selected.includes(a.agency) });
-    if (acr) nodes.push({ id: "r2:" + a.agency, pos: POS.r2[a.agency], t1: a.label, t2: "Round 2 reply", fill: "#00703c", active: !!r2[a.agency] });
-  }
-  nodes.push(acr ? { id: "acr", pos: POS.acr, t1: "A_cr", t2: "Config resolution – JESIP", fill: "#1f5aa6", active: true }
-                 : { id: "acr", pos: POS.acr, t1: "A_cr", t2: "Not yet active (#3)", fill: "#112836", active: true, planned: true });
-  nodes.push({ id: "consensus", t1: "Consensus check", t2: "Deterministic allocator", fill: "#ffffff", light: true, active: es.some(isAgency) });
-  if (arb || (!agreed && es.some(isAgency))) nodes.push({ id: "arbiter", t1: "Qwen Gold Arbiter", t2: "QWEN_GOLD_ARBITER", fill: "#1f5aa6", active: !!arb });
-
-  let outcome = { t1: "Pending", t2: "No decision this tick", status: "pending" };
-  const derived = (text, status) => ({ sender: "ALLOCATOR (derived from board statuses)", tick, proposal_text: text, proposed_units: [], consensus_status: status });
-  if (arb && arb.consensus_status === "QWEN_OVERRIDDEN") outcome = { t1: "Dispatched", t2: arb.proposed_units.join(", "), status: "agreed" };
-  else if (arb) outcome = { t1: "Deferred", t2: "No valid allocation", status: "deferred" };
-  else if (agreed) outcome = { t1: "Dispatched", t2: es.filter(isAgency).flatMap((e) => e.proposed_units).join(", "), status: "agreed" };
-  else if (pipelineFail) outcome = { t1: "Deferred", t2: "Pipeline error", status: "deferred" };
-  nodes.push({ id: "outcome", t1: outcome.t1, t2: outcome.t2 || "—", fill: outcome.status === "deferred" ? "#e5484d" : outcome.status === "agreed" ? "#00703c" : "#112836", active: outcome.t1 !== "Pending" });
-
-  const edges = [];
-  for (const a of AGENTS) {
-    const on = selected.includes(a.agency);
-    edges.push({ from: "triage", to: "r1:" + a.agency, entry: on ? triage : null, status: on ? "pending" : "idle", label: on ? `Wake ${a.label}` : `${a.label} not selected by triage` });
-    const e1 = r1[a.agency];
-    if (!e1) continue;
-    if (acr) {
-      edges.push({ from: "r1:" + a.agency, to: "acr", entry: e1, status: edgeStatus(e1.consensus_status), label: `${a.label} proposal to A_cr` });
-      edges.push({ from: "acr", to: "r2:" + a.agency, entry: acr, status: "pending", label: `A_cr joint picture to ${a.label}` });
-      const e2 = r2[a.agency];
-      if (e2) edges.push({ from: "r2:" + a.agency, to: "consensus", entry: e2, status: edgeStatus(e2.consensus_status), label: `${a.label} round 2 reply` });
-    } else {
-      // The highway still runs through A_cr: its lane is drawn idle and today's direct path bypasses it.
-      edges.push({ from: "r1:" + a.agency, to: "acr", entry: null, status: "idle", label: `${a.label} to A_cr: mediation not yet active (#3)` });
-      const [, y] = POS.r1[a.agency];
-      edges.push({ from: "r1:" + a.agency, to: "consensus", entry: e1, status: edgeStatus(e1.consensus_status), label: `${a.label} proposal (bypasses A_cr)`,
-        via: y === POS.acr[1] ? [POS.acr[0], POS.acr[1] - 70] : null });
-    }
-  }
-  if (!acr && Object.keys(r1).length) edges.push({ from: "acr", to: "consensus", entry: null, status: "idle", label: "A_cr to consensus: not yet active (#3)" });
-  if (agreed && !arb) edges.push({ from: "consensus", to: "outcome", entry: derived("All selected agencies' combined proposals passed deterministic validation.", "AGREED"), status: "agreed", label: "Consensus validated" });
-  if (nodes.some((n) => n.id === "arbiter")) {
-    edges.push({ from: "consensus", to: "arbiter", entry: derived("No valid consensus (deadlock, timeout or failed validation). Qwen Gold Arbiter takes over.", "DEADLOCK_TIMEOUT"), status: "deadlock", label: "Escalated to arbiter" });
-    if (arb) edges.push({ from: "arbiter", to: "outcome", entry: arb, status: arb.consensus_status === "QWEN_OVERRIDDEN" ? "agreed" : "deferred", label: "Arbiter decision" });
-  }
-  return { inc, nodes, edges, acr };
-}
-
-function nodePos(n) { return n.pos || POS[n.id]; }
-
-function renderHighway(cam, keepTick) {
-  openCam = cam;
-  const inc = data.state.active_incidents[cam];
-  const entries = boardFor(cam);
-  const ticks = [...new Set(entries.map((e) => e.tick))];
-  const select = $("hw-round");
-  const prev = keepTick ? Number(select.value) : null;
-  select.innerHTML = ticks.map((t) => `<option value="${t}">Tick ${t}</option>`).join("");
-  select.value = String(ticks.includes(prev) ? prev : ticks[ticks.length - 1] ?? "");
-  $("hw-round-wrap").hidden = ticks.length < 2;
-  const tick = Number(select.value);
-  $("hw-title").textContent = "Mediation highway – " + (data.cameras[cam]?.name || cam);
-  $("hw-sub").textContent = `${cam} – ${HAZARD[inc.hazard]} – severity ${inc.severity}${inc.road_blocked ? " – road blocked" : ""} – ${progressOf(inc).text}`;
-
-  const svg = $("hw-svg");
-  if (!ticks.length) {
-    svg.innerHTML = `<text x="560" y="215" text-anchor="middle" fill="#9db3bd" font-size="16">No agent activity yet. Advance a tick to run triage.</text>`;
-    $("hw-table").innerHTML = boardTable([]);
-    $("hw-detail").textContent = "Select a line to read that exchange.";
+function initMap() {
+  if (typeof maplibregl === "undefined") {
+    $("map").innerHTML = `<p class="map-fallback">The map library could not load (offline?). Incidents, details and the agent feed still work.</p>`;
     return;
   }
-  const model = highwayModel(cam, tick);
-  const byId = Object.fromEntries(model.nodes.map((n) => [n.id, n]));
-  const edgeSvg = model.edges.map((e, i) => {
-    const [x1, y1] = nodePos(byId[e.from]), [x2, y2] = nodePos(byId[e.to]);
-    const sx = x1 + NW / 2, tx = x2 - NW / 2, dx = Math.max(40, (tx - sx) / 2);
-    // The arbiter detour sits below consensus and outcome, so it leaves and rejoins through their bottom edges.
-    const d = e.to === "arbiter" ? `M${x1},${y1 + NH / 2} C${x1},${y2} ${x1},${y2} ${x2 - NW / 2},${y2}`
-      : e.from === "arbiter" ? `M${x1 + NW / 2},${y1} C${x2},${y1} ${x2},${y1} ${x2},${y2 + NH / 2}`
-      : e.via ? `M${sx},${y1} C${sx + 50},${y1} ${e.via[0] - 90},${e.via[1]} ${e.via[0]},${e.via[1]} S${tx - 50},${y2} ${tx},${y2}`
-      : `M${sx},${y1} C${sx + dx},${y1} ${tx - dx},${y2} ${tx},${y2}`;
-    return `<path class="edge ${e.status}" id="edge-${i}" d="${d}"/>
-      <path class="hit" d="${d}" data-edge="${i}" tabindex="${e.entry ? 0 : -1}" role="button" aria-label="${esc(e.label)}"><title>${esc(e.label)}${e.entry ? ": " + esc(e.entry.proposal_text) : ""}</title></path>`;
-  }).join("");
-  const nodeSvg = model.nodes.map((n) => {
-    const [x, y] = nodePos(n);
-    return `<g class="node ${n.active ? "" : "idle"} ${n.light ? "light" : ""} ${n.planned ? "planned" : ""}" transform="translate(${x - NW / 2},${y - NH / 2})">
-      <rect width="${NW}" height="${NH}" rx="6" fill="${n.fill}"/>
-      <text class="t1" x="10" y="21">${esc(n.t1)}</text><text class="t2" x="10" y="38">${esc(String(n.t2).slice(0, 24))}</text></g>`;
-  }).join("");
-  svg.innerHTML = edgeSvg + nodeSvg;
-  svg.querySelectorAll(".hit").forEach((el) => {
-    const pick = () => selectEdge(model, Number(el.dataset.edge));
-    el.addEventListener("click", pick);
-    el.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); pick(); } });
+  map = new maplibregl.Map({ container: "map", style: "https://tiles.openfreemap.org/styles/fiord", center: [-1.4701, 53.3811], zoom: 12, attributionControl: { compact: true } });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  new ResizeObserver(() => map.resize()).observe($("map"));  // the drawer opening and closing changes the map's height
+  map.on("load", () => {
+    for (const [layer, paint] of Object.entries(BASEMAP_PAINT))
+      if (map.getLayer(layer)) for (const [k, v] of Object.entries(paint)) map.setPaintProperty(layer, k, v);
+    for (const [a, meta] of Object.entries(AGENCY)) map.addImage("st-" + a, triangleImage(meta.color), { pixelRatio: 2 });
+    const empty = { type: "FeatureCollection", features: [] };
+    for (const id of ["stations", "incidents", "alloc", "cordons"]) map.addSource(id, { type: "geojson", data: empty });
+    map.addLayer({ id: "cordon-inner", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "inner"], paint: { "line-color": ["get", "color"], "line-width": 2 } });
+    map.addLayer({ id: "cordon-outer", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "outer"], paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [3, 2] } });
+    map.addLayer({ id: "cordon-evac", type: "line", source: "cordons", filter: ["==", ["get", "ring"], "evac"], paint: { "line-color": ["get", "color"], "line-width": 2, "line-dasharray": [0.6, 1.6] } });
+    map.addLayer({ id: "alloc", type: "line", source: "alloc", layout: { "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 2.5, "line-opacity": 0.9 } });
+    map.addLayer({ id: "stations", type: "symbol", source: "stations", layout: { "icon-image": ["concat", "st-", ["get", "agency"]], "icon-allow-overlap": true } });
+    map.addLayer({ id: "incidents", type: "circle", source: "incidents", paint: {
+      "circle-radius": ["+", 5, ["*", 2.6, ["get", "severity"]]], "circle-color": ["get", "color"], "circle-opacity": 0.92,
+      "circle-stroke-color": ["case", ["get", "selected"], "#f2c300", "#ffffff"], "circle-stroke-width": ["case", ["get", "selected"], 3.5, 1.5] } });
+    const tip = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 12 });
+    map.on("mousemove", "incidents", (e) => {
+      const p = e.features[0].properties;
+      map.getCanvas().style.cursor = "pointer";
+      tip.setLngLat(e.lngLat).setHTML(`<b>${esc(p.id)}</b> – ${esc(categoryText(p.category))} – SEV ${p.severity} – ${esc(p.status)}`).addTo(map);
+    });
+    map.on("mouseleave", "incidents", () => { map.getCanvas().style.cursor = ""; tip.remove(); });
+    map.on("click", "incidents", (e) => select(e.features[0].properties.id));
+    map.on("mousemove", "stations", (e) => tip.setLngLat(e.lngLat).setHTML(`${esc(e.features[0].properties.name)} – ${esc(agencyOf(e.features[0].properties.agency).label)}`).addTo(map));
+    map.on("mouseleave", "stations", () => tip.remove());
+    renderStations();
+    renderMap();
   });
-  $("hw-detail").textContent = model.acr ? "Select a line to read that exchange." : "Select a line to read that exchange. A_cr mediation is not active yet, so agencies do not read each other's proposals.";
-  $("hw-table").innerHTML = boardTable(entries.filter((e) => e.tick === tick));
 }
 
-function selectEdge(model, i) {
-  const e = model.edges[i];
-  document.querySelectorAll("#hw-svg .edge").forEach((p) => p.classList.toggle("selected", p.id === "edge-" + i));
-  if (!e.entry) { $("hw-detail").innerHTML = `<strong>${esc(e.label)}</strong>`; return; }
-  const x = e.entry;
-  $("hw-detail").innerHTML = `<strong>${esc(e.label)}</strong>
-    <span>${esc(x.sender)} – tick ${x.tick}${x.round ? " – round " + x.round : ""} – ${statusCell(x.consensus_status)}</span>
-    <span>${esc(x.proposal_text)}</span>${x.proposed_units && x.proposed_units.length ? `<span>Units: ${esc(x.proposed_units.join(", "))}</span>` : ""}`;
+function renderStations() {
+  if (!map || !map.getSource("stations")) return;
+  map.getSource("stations").setData({ type: "FeatureCollection", features: store.stations.map((s) => ({
+    type: "Feature", properties: { name: s.name, agency: AGENCY[s.agency] ? s.agency : "shared" }, geometry: { type: "Point", coordinates: [s.lon, s.lat] } })) });
 }
 
-function openHighway(cam) {
-  renderHighway(cam, false);
-  if (!$("highway").open) $("highway").showModal();
+function statusColor(s) { return { ok: "#4cc38a", partial: "#F5B300", failed: "#FF5A5F", routing: "#c9d8df", muted: "#5E7682" }[statusOf(s)[0]]; }
+
+function stationCoord(a) {
+  const s = store.stations.find((x) => x.id === a.station_id) || store.stations.find((x) => x.name === a.station);
+  return s ? [s.lon, s.lat] : null;
+}
+
+function renderMap() {
+  if (!map || !map.getSource("incidents")) return;
+  const shown = store.incidents.filter((i) => visible(i) && i.status !== "closed" && Number.isFinite(i.lat));
+  map.getSource("incidents").setData({ type: "FeatureCollection", features: shown.map((i) => ({ type: "Feature",
+    properties: { id: i.id, category: i.category, severity: i.severity, status: i.status, color: statusColor(i.status), selected: i.id === ui.selected },
+    geometry: { type: "Point", coordinates: [i.lon, i.lat] } })) });
+  // Pulsing ring for incidents the agents are still routing.
+  const routingIds = new Set(shown.filter((i) => statusOf(i.status)[0] === "routing").map((i) => i.id));
+  for (const [id, m] of routingMarkers) if (!routingIds.has(id)) { m.remove(); routingMarkers.delete(id); }
+  for (const i of shown) if (routingIds.has(i.id) && !routingMarkers.has(i.id)) {
+    const el = document.createElement("div"); el.className = "pulse";
+    routingMarkers.set(i.id, new maplibregl.Marker({ element: el }).setLngLat([i.lon, i.lat]).addTo(map));
+  }
+  renderSelectionLayers();
+}
+
+function renderSelectionLayers() {
+  if (!map || !map.getSource("alloc")) return;
+  dynMarkers.splice(0).forEach((m) => m.remove());
+  const inc = ui.selected && incidentOf(ui.selected);
+  const r = inc && latestResponse(inc.id);
+  const allocFeatures = [], cordonFeatures = [];
+  if (inc && r && inc.status !== "closed") {
+    for (const a of r.allocations) {
+      const from = stationCoord(a);
+      if (!from) continue;
+      allocFeatures.push({ type: "Feature", properties: { color: agencyOf(a.agency).color }, geometry: { type: "LineString", coordinates: [from, [inc.lon, inc.lat]] } });
+    }
+    // One label per station keeps the line labels readable when several units leave the same base.
+    const byStation = new Map();
+    for (const a of r.allocations) { const k = a.station_id || a.station; if (!byStation.has(k)) byStation.set(k, []); byStation.get(k).push(a); }
+    for (const list of byStation.values()) {
+      const from = stationCoord(list[0]);
+      if (!from) continue;
+      const el = document.createElement("div");
+      el.className = "line-label";
+      el.style.setProperty("--c", agencyOf(list[0].agency).color);
+      el.textContent = list.map((a) => `${a.callsign} ${a.eta_min ?? "?"}′`).join(" – ");
+      dynMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([(from[0] * 2 + inc.lon) / 3, (from[1] * 2 + inc.lat) / 3]).addTo(map));
+    }
+    for (const p of r.agent_responses) {
+      const sc = p.scene_constraints || {}, color = agencyOf(p.agency).color;
+      for (const [ring, m] of [["inner", sc.inner_cordon_m], ["outer", sc.outer_cordon_m], ["evac", sc.evacuation_radius_m]])
+        if (m) cordonFeatures.push({ type: "Feature", properties: { ring, color }, geometry: { type: "LineString", coordinates: ringCoords(inc.lat, inc.lon, m) } });
+      if (sc.staging && Number.isFinite(sc.staging.lat)) {
+        const el = document.createElement("div");
+        el.className = "staging";
+        el.style.setProperty("--c", color);
+        el.innerHTML = `<i></i><span>Staging – ${esc(agencyOf(p.agency).label)}</span>`;
+        el.title = sc.staging.name || "Staging area";
+        dynMarkers.push(new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([sc.staging.lon, sc.staging.lat]).addTo(map));
+      }
+    }
+  }
+  map.getSource("alloc").setData({ type: "FeatureCollection", features: allocFeatures });
+  map.getSource("cordons").setData({ type: "FeatureCollection", features: cordonFeatures });
+}
+
+// ---------- detail drawer ----------
+let drawerSig = "", feedSig = "";
+function renderDrawer() {
+  const drawer = $("drawer");
+  const inc = ui.selected && incidentOf(ui.selected);
+  document.body.classList.toggle("has-selection", !!inc);
+  if (!inc) { drawerSig = ""; drawer.innerHTML = `<p class="empty">Select an incident in the list or on the map to see why the agents decided what they did.</p>`; return; }
+  const r = latestResponse(inc.id);
+  const history = store.responses.filter((x) => x.incident_id === inc.id);
+  // Polls arrive every 2 s; re-render only on change so open "Raw" panels and text selections survive.
+  const sig = JSON.stringify([inc, r, history.length, ui.tab]);
+  if (sig === drawerSig) return;
+  drawerSig = sig;
+  const tabs = [["summary", "Summary"], ["resources", "Resources"], ["agencies", "Agencies"], ["conflicts", `Conflicts${r && (r.hard_conflicts.length + r.soft_conflicts.length) ? ` (${r.hard_conflicts.length + r.soft_conflicts.length})` : ""}`], ["history", `History (${history.length})`]];
+  const scroll = drawer.querySelector(".d-body")?.scrollTop || 0;
+  drawer.innerHTML = `<div class="d-head">
+      <h2><span class="mono">${esc(inc.id)}</span> – ${esc(categoryText(inc.category))} – <span style="color:${SEV_COLOR[inc.severity]}">SEV ${inc.severity}</span>${inc.district ? ` – ${esc(inc.district)}` : ""}</h2>
+      ${pill(inc.status)}
+      <div class="d-actions">
+        ${inc.status === "failed" ? `<button class="btn small" type="button" data-act="retry">Retry</button>` : ""}
+        ${inc.status !== "closed" ? `<button class="btn small" type="button" data-act="close-incident">Close incident</button>` : ""}
+        <button class="btn small ghost" type="button" data-act="deselect" aria-label="Hide detail">Hide</button>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" type="button" data-tab="${k}" aria-selected="${ui.tab === k}">${t}</button>`).join("")}</div>
+    <div class="d-body">${r || ui.tab === "summary" ? TAB[ui.tab](inc, r, history) : `<p class="empty">The agents are still routing this incident.</p>`}</div>`;
+  drawer.querySelector(".d-body").scrollTop = scroll;
+}
+
+const listOr = (items, empty = "None") => (items && items.length ? `<ul>${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : `<p class="muted">${empty}</p>`);
+const execBadge = (by) => `<span class="exec ${by === "fallback" ? "fallback" : by === "mock" ? "mock" : by === "rules" ? "rules" : "model"}">${esc(by || "unknown")}</span>`;
+const raw = (obj) => `<details class="raw"><summary>Raw</summary><pre>${esc(JSON.stringify(obj, null, 2))}</pre></details>`;
+
+const TAB = {
+  summary(inc, r) {
+    const routing = r ? r.routing : { lead: inc.lead_agency, agencies: inc.routed_agencies };
+    const agencies = (routing.agencies || []).map((a) => `${agencyOf(a).label}${a === routing.lead ? " (lead)" : ""}`).join(", ");
+    return `<div class="summary">
+      <div>
+        <p class="desc">${esc(inc.description)}</p>
+        <dl class="facts">
+          <div><dt>Casualties</dt><dd>${inc.casualties ?? 0}</dd></div><div><dt>Trapped</dt><dd>${inc.trapped ?? 0}</dd></div>
+          <div><dt>Hazards</dt><dd>${esc((inc.hazards || []).join(", ") || "None")}</dd></div><div><dt>Weapons</dt><dd>${esc(inc.weapons || "None")}</dd></div>
+        </dl>
+        <p class="routing">${agencies ? `<b>Qwen routed to ${esc(agencies)}</b>${routing.rationale ? `: ${esc(routing.rationale)}` : ""}` : "Waiting for Qwen to route this incident."}</p>
+      </div>
+      <div class="directives">
+        <h3>Unified directives (CR)</h3>
+        ${r && r.directives.length ? `<ol>${r.directives.map((d) => `<li>${esc(d)}</li>`).join("")}</ol>` : `<p class="muted">CR has not issued directives yet.</p>`}
+        ${r && r.cr_rationale ? `<p class="muted small">${esc(r.cr_rationale)}</p>` : ""}
+      </div>
+    </div>`;
+  },
+  resources(inc, r) {
+    const rows = r.allocations.map((a) => `<tr><td class="mono">${esc(a.callsign)}</td><td>${esc(a.type_name || a.resource_type)} <span class="code">${esc(a.resource_type)}</span></td>
+      <td>${agencyChip(a.agency)}</td><td>${esc(a.station)}</td>
+      <td class="num ${a.max_eta_min != null && a.eta_min > a.max_eta_min ? "late" : ""}">${a.eta_min ?? "—"} min${a.max_eta_min != null ? ` <span class="muted">/ ${a.max_eta_min}</span>` : ""}</td>
+      <td>${esc(a.requested_by || "")}</td><td>${a.preempted_from ? `<span class="preempt">${esc(a.preempted_from)}</span>` : ""}</td></tr>`).join("");
+    const unmet = r.unmet.length ? `<div class="unmet"><h3>Unmet needs</h3><ul>${r.unmet.map((u) => `<li><b>${u.qty}× ${esc(u.type_name || u.resource_type)}</b>${u.essential ? " (essential)" : ""}${u.mutual_aid ? ` – ${esc(u.mutual_aid)}` : ""}</li>`).join("")}</ul></div>` : "";
+    return `<div class="table-wrap"><table class="data"><thead><tr><th>Callsign</th><th>Type</th><th>Agency</th><th>Station</th><th class="num">ETA / max</th><th>Requested by</th><th>Pre-empted from</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7" class="muted">No units allocated.</td></tr>`}</tbody></table></div>${unmet}`;
+  },
+  agencies(inc, r) {
+    return `<div class="agent-cards">${r.agent_responses.map((p) => `<article class="agent-card" style="--c:${agencyOf(p.agency).color}">
+      <header><span class="agent-chip" style="--c:${agencyOf(p.agency).color}">${esc(AGENTS[p.agent_id]?.label || p.agent_id)}</span>${execBadge(p.executed_by)}${p.latency_ms != null ? `<span class="muted small">${(p.latency_ms / 1000).toFixed(1)} s</span>` : ""}</header>
+      <p>${esc(p.summary)}</p>
+      ${p.confidence != null ? `<div class="conf" title="Model confidence"><span style="width:${Math.round(p.confidence * 100)}%"></span></div><p class="muted small">Confidence ${Math.round(p.confidence * 100)}%</p>` : ""}
+      <h4>Tactical plan</h4>${listOr(p.tactical_plan)}
+      <h4>Hazards</h4>${listOr(p.hazards)}
+      <h4>Safety</h4>${listOr(p.safety_notes)}
+      <h4>Knowledge base</h4>${listOr(p.kb_citations, "No citations")}
+      ${raw(p)}</article>`).join("") || `<p class="muted">No agency proposals.</p>`}</div>`;
+  },
+  conflicts(inc, r) {
+    const hard = r.hard_conflicts.map((h) => `<article class="conflict hard ${h.overridden ? "overridden" : ""}">
+      <header><b>${esc(cap(h.kind || "conflict"))}: ${esc(h.type_name || h.resource_type)}</b><span class="muted">${h.requested} requested, ${h.available} free</span></header>
+      <p><b>CR resolution:</b> ${esc(h.resolution)}</p><p class="muted">${esc(h.rationale || "")}</p>
+      ${h.overridden ? `<p class="override">CR's first choice failed re-validation; rules applied ${esc(h.fallback || "a fallback")}.</p>` : ""}</article>`).join("");
+    const soft = r.soft_conflicts.map((s) => `<article class="conflict soft">
+      <header><b>${esc(s.title || softText(s.code))}</b><span class="tag ${esc(s.source)}">${esc(s.source || "")}</span></header>
+      <p class="code">${esc(s.code || "")}</p>
+      <p>${(s.agencies || []).map(agencyChip).join(" ")} <span class="muted">severity ${esc(s.severity || "")}</span></p>
+      <p><b>Suggested:</b> ${esc(s.resolution || s.suggested_resolution || "")}</p></article>`).join("");
+    return `<div class="conflicts"><section><h3>Hard conflicts</h3>${hard || `<p class="muted">None: every request was met from free units.</p>`}</section>
+      <section><h3>Soft conflicts</h3>${soft || `<p class="muted">None detected.</p>`}</section></div>`;
+  },
+  history(inc, r, history) {
+    return `<table class="data"><thead><tr><th>Time</th><th>Response</th><th>Status</th><th class="num">Units</th><th class="num">Unmet</th></tr></thead><tbody>${
+      history.slice().reverse().map((h) => `<tr><td>${timeOf(h.created_at)}</td><td class="mono">${esc(h.id)}</td><td>${pill(h.status)}</td><td class="num">${h.allocations.length}</td><td class="num">${h.unmet.reduce((n, u) => n + (u.qty || 0), 0)}</td></tr>`).join("")}</tbody></table>`;
+  },
+};
+
+// ---------- agent observability feed ----------
+function renderFeed() {
+  if (ui.feedPaused) {
+    $("feed-new").hidden = ui.feedPending === 0;
+    $("feed-new").textContent = `${ui.feedPending} new – resume`;
+    return;
+  }
+  $("feed-new").hidden = true;
+  const agentFilter = $("feed-agent").value;
+  const follow = $("feed-follow").checked && ui.selected;
+  const rows = store.events.filter((e) => {
+    const inc = e.incident_id && incidentOf(e.incident_id);
+    if (inc && !visible(inc)) return false;
+    if (agentFilter && e.agent_id !== agentFilter) return false;
+    if (follow && e.incident_id !== ui.selected) return false;
+    return true;
+  }).slice(-200).reverse();
+  const sig = JSON.stringify([rows.map((e) => e.id), [...ui.expandedEvents], ui.selected]);
+  if (sig === feedSig) return;
+  feedSig = sig;
+  if (!rows.length) { $("feed").innerHTML = `<li class="empty">${store.events.length ? "No decisions match these filters." : "Agent decisions appear here as they happen."}</li>`; return; }
+  $("feed").innerHTML = rows.map((e) => {
+    const meta = AGENTS[e.agent_id] || { label: e.agent_id, color: "#7F99A4" };
+    const open = ui.expandedEvents.has(e.id);
+    const detail = e.payload && (e.payload.rationale || e.payload.summary);
+    return `<li class="ev ${e.incident_id === ui.selected ? "hl" : ""} t-${esc(String(e.type).toLowerCase())}">
+      <button type="button" class="ev-row" data-event="${e.id}" aria-expanded="${open}">
+        <span class="ev-top"><time>${timeOf(e.ts)}</time><span class="agent-chip ${e.executed_by === "fallback" ? "fallback" : e.executed_by === "mock" ? "mock" : ""}" style="--c:${meta.color}">${esc(meta.label)}</span><span class="ev-type">${esc(e.type)}</span>${e.incident_id ? `<span class="ev-inc mono">${esc(e.incident_id)}</span>` : ""}</span>
+        <span class="ev-sum">${esc(e.summary)}</span>
+      </button>
+      ${open ? `<div class="ev-more">${detail ? `<p>${esc(detail)}</p>` : ""}<p class="muted small">executed by ${esc(e.executed_by || "unknown")}${e.incident_id ? ` – <button type="button" class="link" data-select="${esc(e.incident_id)}">open ${esc(e.incident_id)}</button>` : ""}</p>${raw(e.payload)}</div>` : ""}
+    </li>`;
+  }).join("");
+}
+
+// ---------- resource database ----------
+const resUi = { agency: "", expanded: new Set(), units: {}, forecast: {} };
+async function renderResources() {
+  if (!$("resources-dialog").open) return;
+  const [types, hospitals] = await Promise.all([API.call("resources"), API.call("hospitals")]);
+  for (const code of resUi.expanded) {
+    [resUi.units[code], resUi.forecast[code]] = await Promise.all([API.call("units", { resource_type: code }), API.call("forecast", code)]);
+  }
+  const rows = (types || []).filter((t) => !resUi.agency || t.agency === resUi.agency).map((t) => {
+    const share = t.total ? t.available / t.total : 0;
+    const band = t.available === 0 ? "bad" : share < 0.3 ? "warn" : "good";
+    const open = resUi.expanded.has(t.code);
+    const units = resUi.units[t.code] || [];
+    const fc = resUi.forecast[t.code];
+    return `<tr class="type-row"><td>${agencyChip(t.agency)}</td>
+      <td><button type="button" class="link" data-type="${esc(t.code)}" aria-expanded="${open}">${esc(t.name)} <span class="code">(${esc(t.code)})</span></button></td>
+      <td class="num">${t.total}</td>
+      <td class="num"><span class="avail ${band}"><span class="avail-bar"><span style="width:${Math.round(share * 100)}%"></span></span>${t.available}</span></td>
+      <td class="num">${t.committed}</td><td class="num">${t.out_of_service}</td></tr>
+      ${open ? `<tr class="expand"><td colspan="6"><div class="expand-grid">
+        <table class="data inner"><thead><tr><th>Callsign</th><th>Station</th><th>Status</th><th>Incident</th><th></th></tr></thead><tbody>${
+          units.map((u) => `<tr><td class="mono">${esc(u.callsign)}</td><td>${esc(store.stations.find((s) => s.id === u.station_id)?.name || u.station_id)}</td><td>${esc(u.status.replace(/_/g, " "))}</td>
+          <td class="mono">${esc(u.incident_id || "")}</td><td>${u.status === "committed" ? `<button type="button" class="btn small" data-release="${esc(u.id)}">Release</button>` : ""}</td></tr>`).join("")}</tbody></table>
+        ${fc ? forecastChart(fc) : ""}</div></td></tr>` : ""}`;
+  }).join("");
+  $("resources-body").innerHTML = `<div class="table-wrap"><table class="data"><thead><tr><th>Agency</th><th>Type</th><th class="num">Total</th><th class="num">Available</th><th class="num">Committed</th><th class="num">Out of service</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $("hospitals").innerHTML = `<table class="data"><thead><tr><th>Hospital</th><th class="num">ED capacity</th><th>Major trauma</th><th>Paediatric</th></tr></thead><tbody>${
+    (hospitals || []).map((h) => `<tr><td>${esc(h.name)}</td><td class="num">${h.ed_capacity ?? "—"}</td><td>${h.major_trauma ? "Yes" : "No"}</td><td>${h.paediatric ? "Yes" : "No"}</td></tr>`).join("")}</tbody></table>`;
+}
+
+function forecastChart(fc) {
+  const w = 260, h = 90, max = Math.max(1, fc.total || Math.max(...fc.points.map((p) => p.available)));
+  const x = (m) => 8 + (m / 120) * (w - 16), y = (v) => h - 18 - (v / max) * (h - 30);
+  let d = "";
+  fc.points.forEach((p, i) => { d += i ? `H${x(p.minutes)}V${y(p.available)}` : `M${x(p.minutes)},${y(p.available)}`; });
+  return `<figure class="forecast"><figcaption>Available over the next 2 hours</figcaption>
+    <svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Forecast of available ${esc(fc.resource_type)} units">
+      <line x1="8" x2="${w - 8}" y1="${y(0)}" y2="${y(0)}" class="axis"/><path d="${d}" class="step"/>
+      ${[0, 60, 120].map((m) => `<text x="${x(m)}" y="${h - 4}" text-anchor="middle">${m ? `+${m}m` : "now"}</text>`).join("")}
+      <text x="${w - 8}" y="${y(max) - 4}" text-anchor="end">${max}</text></svg></figure>`;
+}
+
+// ---------- actions ----------
+function select(id) {
+  if (id !== ui.selected) ui.tab = "summary";
+  ui.selected = id;
+  $("legend").open = false;  // the map is shorter with the drawer open; keep cordons and staging pins clear
+  renderAll();
+  const inc = incidentOf(id);
+  // Fly after the drawer has opened, so the incident lands in the centre of the resized map.
+  if (map && inc && Number.isFinite(inc.lat)) requestAnimationFrame(() => { map.resize(); map.flyTo({ center: [inc.lon, inc.lat], zoom: 14.3, speed: 1.4 }); });
+}
+function deselect() { ui.selected = null; $("legend").open = true; renderAll(); }
+
+async function runDemo() {
+  if (ui.demoRunning) return;
+  ui.demoRunning = true;
+  const btn = $("run-demo");
+  btn.disabled = true;
+  try {
+    const scenario = await API.call("scenario");
+    for (let i = 0; i < scenario.length; i++) {
+      btn.textContent = `Running demo ${i + 1}/${scenario.length}…`;
+      await API.call("createIncident", scenario[i]);
+      poll();
+      if (i < scenario.length - 1) await new Promise((r) => setTimeout(r, 3000));
+    }
+  } catch (err) {
+    setMode("offline", `Demo failed: ${err.message}`);
+  } finally {
+    ui.demoRunning = false;
+    btn.disabled = false;
+    btn.textContent = "▶ Run demo scenario";
+  }
+}
+
+function renderAll() {
+  renderMetrics();
+  renderList();
+  renderMap();
+  renderDrawer();
+  renderFeed();
+  if ($("resources-dialog").open) renderResources();
 }
 
 // ---------- wiring ----------
-function showConnect(message) {
-  $("connect-error").textContent = message || "";
-  $("api-url").value = api || "";
-  if (!$("connect").open) $("connect").showModal();
+document.addEventListener("click", async (ev) => {
+  const t = ev.target.closest("button, [data-select]");
+  if (!t) return;
+  if (t.dataset.select) return select(t.dataset.select);
+  if (t.dataset.tab) { ui.tab = t.dataset.tab; return renderDrawer(); }
+  if (t.dataset.event) { const id = Number(t.dataset.event); ui.expandedEvents.has(id) ? ui.expandedEvents.delete(id) : ui.expandedEvents.add(id); return renderFeed(); }
+  if (t.dataset.type) { resUi.expanded.has(t.dataset.type) ? resUi.expanded.delete(t.dataset.type) : resUi.expanded.add(t.dataset.type); return renderResources(); }
+  if (t.dataset.release) { await API.call("releaseUnit", t.dataset.release); await poll(); return renderResources(); }
+  if (t.dataset.close !== undefined) return t.closest("dialog").close();
+  if (t.dataset.act === "deselect") return deselect();
+  if (t.dataset.act === "close-incident") { await API.call("closeIncident", ui.selected); return poll(); }
+  if (t.dataset.act === "retry") { await API.call("retryIncident", ui.selected); return poll(); }
+  if (t.dataset.chip) {
+    const chip = t.dataset.chip;
+    if (chip === "all") ui.chips.clear(); else ui.chips.has(chip) ? ui.chips.delete(chip) : ui.chips.add(chip);
+    document.querySelectorAll("[data-chip]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.chip === "all" ? ui.chips.size === 0 : ui.chips.has(b.dataset.chip))));
+    return renderAll();
+  }
+  if (t.dataset.agency !== undefined && t.closest("#agency-tabs")) {
+    resUi.agency = t.dataset.agency;
+    document.querySelectorAll("#agency-tabs [role=tab]").forEach((b) => b.setAttribute("aria-selected", String(b === t)));
+    return renderResources();
+  }
+});
+$("run-demo").addEventListener("click", runDemo);
+$("new-incident").addEventListener("click", () => { $("incident-error").textContent = ""; $("incident-dialog").showModal(); });
+$("open-resources").addEventListener("click", () => { $("resources-dialog").showModal(); renderResources(); });
+$("about-open").addEventListener("click", () => $("about-dialog").showModal());
+$("mode").addEventListener("click", () => { $("api-url").value = API.base; $("connect").showModal(); });
+$("feed-agent").addEventListener("change", renderFeed);
+$("feed-follow").addEventListener("change", renderFeed);
+$("feed-pause").addEventListener("click", (e) => {
+  ui.feedPaused = !ui.feedPaused; ui.feedPending = 0;
+  e.currentTarget.setAttribute("aria-pressed", String(ui.feedPaused));
+  e.currentTarget.textContent = ui.feedPaused ? "Resume" : "Pause";
+  $("live-dot").classList.toggle("on", !ui.feedPaused);
+  renderFeed();
+});
+$("feed-new").addEventListener("click", () => $("feed-pause").click());
+$("incident-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = new FormData(ev.currentTarget);
+  const body = Object.fromEntries(f.entries());
+  for (const k of ["severity", "lat", "lon", "casualties", "trapped"]) body[k] = Number(body[k]);
+  body.hazards = String(body.hazards || "").split(",").map((s) => s.trim()).filter(Boolean);
+  try { await API.call("createIncident", body); $("incident-dialog").close(); ev.currentTarget.reset(); poll(); }
+  catch (err) { $("incident-error").textContent = `Could not create the incident: ${err.message}`; }
+});
+$("connect-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const url = $("api-url").value.trim();
+  try { localStorage.setItem("suru-api", url); } catch { /* storage blocked */ }
+  location.search = url ? `?api=${encodeURIComponent(url)}` : "";
+});
+
+function renderAbout() {
+  const live = API.mode === "live";
+  $("about-body").innerHTML = `
+    <p>${live ? `Connected to the urban_response API at <code>${esc(API.base)}</code>.` : "No backend address is set, so this page runs a <b>built-in mock</b>: scripted agents, invented unit counts and approximate station locations. Every decision is labelled <span class='exec mock'>mock</span>."}</p>
+    <p>Agency colours: ${Object.values(AGENCY).map((a) => `<span class="chip-ag" style="--c:${a.color}">${a.label}</span>`).join(" ")}. Status colours are separate: green dispatched, amber partial, red failed.</p>
+    <p><b>Response success</b> is the share of incidents whose latest response met every essential request. <b>Fill rate</b> is allocated ÷ requested units. <b>ETA met</b> counts allocations inside the requesting agent's maximum ETA. <b>Conflicts auto-resolved</b> counts hard conflicts where CR's choice passed re-validation.</p>
+    <p>Basemap: OpenFreeMap, © OpenMapTiles, data © OpenStreetMap contributors.</p>
+    <p>Simulated decisions for a hackathon demo. Not operational advice.</p>`;
+  $("foot-note").textContent = live ? `API ${API.base}` : "Mock data (in-browser)";
 }
 
-document.addEventListener("click", (ev) => {
-  const target = ev.target.closest("[data-cam]");
-  if (target && data) openHighway(target.dataset.cam);
-});
-$("hw-close").addEventListener("click", () => $("highway").close());
-$("highway").addEventListener("close", () => { openCam = null; });
-$("hw-round").addEventListener("change", () => renderHighway(openCam, true));
-$("advance").addEventListener("click", () => action("/api/tick"));
-$("retry").addEventListener("click", () => action("/api/retry"));
-$("reset").addEventListener("click", () => action("/api/reset"));
-$("conn").addEventListener("click", () => showConnect());
-document.querySelectorAll(".layers input").forEach((box) => box.addEventListener("change", () => {
-  box.checked ? hidden.delete(box.dataset.layer) : hidden.add(box.dataset.layer);
-  applyLayers();
-}));
-document.querySelectorAll('[role="tab"]').forEach((tab) => tab.addEventListener("click", () => {
-  document.querySelectorAll('[role="tab"]').forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
-  document.querySelectorAll(".tabpanel").forEach((p) => (p.hidden = p.id !== "tab-" + tab.dataset.tab));
-}));
-$("connect-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const url = $("api-url").value.trim().replace(/\/+$/, "");
-  try { await connect(url); $("connect").close(); }
-  catch (err) { $("connect-error").textContent = `Could not reach ${url}: ${err.message}`; }
-});
-
-initMap();
-api = resolveApi();
-if (api) connect(api).catch((err) => { setConn("Backend unreachable", "bad"); showConnect(`Could not reach ${api}: ${err.message}`); });
-else showConnect();
+async function start() {
+  const fromQuery = new URLSearchParams(location.search).get("api");
+  let stored = null;
+  try { stored = localStorage.getItem("suru-api"); } catch { /* storage blocked */ }
+  API.use(fromQuery ?? stored ?? window.SURU_API_BASE ?? "");
+  renderAbout();
+  initMap();
+  try { store.stations = (await API.call("stations")) || []; } catch { store.stations = []; }
+  renderStations();
+  await pollHealth();
+  await poll();
+  setInterval(poll, 2000);
+  setInterval(pollHealth, 10000);
+  setInterval(() => renderList(), 30000);  // keeps "n min" ages fresh between polls
+}
+start();

@@ -47,7 +47,7 @@ window.SURU_MOCK = (function () {
     { code: "DRONE", name: "Drone unit", agency: "shared" }, { code: "CMD", name: "Command unit", agency: "shared" },
   ];
   const PLAN = {
-    IRV: { "ST-SNIG": 5, "ST-SHEP": 4, "ST-ATT": 4, "ST-ECC": 3 }, ARV: { "ST-SHEP": 3 }, RPU: { "ST-SHEP": 2, "ST-ATT": 2 }, DOG: { "ST-SHEP": 2 },
+    IRV: { "ST-SNIG": 5, "ST-SHEP": 4, "ST-ATT": 4, "ST-ECC": 3 }, ARV: { "ST-SHEP": 3 }, RPU: { "ST-SHEP": 2, "ST-ATT": 1 }, DOG: { "ST-SHEP": 2 },
     PMP: { "ST-CEN": 1, "ST-RIV": 1, "ST-DAR": 1, "ST-PKW": 1, "ST-LOW": 1, "ST-BIR": 1 }, ALP: { "ST-CEN": 1 }, HMU: { "ST-DAR": 1 }, RSU: { "ST-CEN": 1 },
     DCA: { "ST-LON": 4, "ST-HAL": 3, "ST-OLI": 3, "ST-HIL": 2 }, RRV: { "ST-LON": 1, "ST-HAL": 1, "ST-OLI": 1 }, HART: { "ST-LON": 1 },
     DRONE: { "ST-JSH": 1 }, CMD: { "ST-JSH": 1 },
@@ -67,19 +67,6 @@ window.SURU_MOCK = (function () {
   units.find((u) => u.id === "ARV-03").status = "out_of_service";
   units.find((u) => u.id === "DCA-12").status = "out_of_service";
 
-  const SCENARIO = [
-    { category: "rtc", severity: 3, district: "Darnall", address: "Staniforth Road / Main Road", lat: 53.3859, lon: -1.4212,
-      description: "Two-vehicle collision; one person trapped; fuel on the carriageway.", casualties: 3, trapped: 1, hazards: ["fuel spill"] },
-    { category: "firearms", severity: 4, district: "Burngreave", address: "Spital Hill", lat: 53.3912, lon: -1.4578,
-      description: "Man seen with a handgun outside a shop; no shots heard.", casualties: 0, trapped: 0, hazards: [], weapons: "handgun" },
-    { category: "high_rise_fire", severity: 5, district: "Broomhall", address: "Hanover Way tower block, 9th floor", lat: 53.3735, lon: -1.4835,
-      description: "Fire on the 9th floor, persons reported, smoke in the stairwell.", casualties: 2, trapped: 4, hazards: ["smoke", "falling glass"] },
-    { category: "hazmat", severity: 4, district: "Tinsley", address: "Sheffield Road industrial unit", lat: 53.4075, lon: -1.4035,
-      description: "Chemical leak from a storage tank; strong odour; staff evacuated.", casualties: 1, trapped: 0, hazards: ["chlorine"] },
-    { category: "medical", severity: 2, district: "Hillsborough", address: "Middlewood Road", lat: 53.4010, lon: -1.5000,
-      description: "Elderly man collapsed in the street; conscious and breathing.", casualties: 1, trapped: 0, hazards: [] },
-  ];
-
   // Scripted "agents": routing, per-agency requests and scene constraints by category.
   const ROUTING = {
     rtc: ["ambulance", ["fire", "police"], "Person trapped and fuel on the road: ambulance lead, fire for extrication, police for closure."],
@@ -92,8 +79,9 @@ window.SURU_MOCK = (function () {
     assault: ["police", ["ambulance"], "Assault with injuries: police lead; ambulance for the casualty."],
   };
   const REQUESTS = {
-    rtc: { fire: [["PMP", 2, 10, true], ["RSU", 1, 15, false]], ambulance: [["DCA", 2, 8, true], ["RRV", 1, 8, false]], police: [["RPU", 2, 15, true], ["IRV", 1, 15, false]] },
-    firearms: { police: [["ARV", 3, 10, true], ["IRV", 4, 15, false], ["DOG", 1, 20, false]], ambulance: [["DCA", 1, 15, false]] },
+    // Demo story: RTC lends a road-policing unit to the firearms job and a pump to the high-rise fire (both non-essential at the RTC).
+    rtc: { fire: [["RSU", 1, 15, true], ["PMP", 2, 10, false]], ambulance: [["DCA", 2, 8, true], ["RRV", 1, 8, false]], police: [["IRV", 1, 15, true], ["RPU", 2, 15, false]] },
+    firearms: { police: [["ARV", 2, 10, true], ["RPU", 2, 15, false], ["IRV", 4, 15, false], ["DOG", 1, 20, false]], ambulance: [["DCA", 1, 15, false]] },
     high_rise_fire: { fire: [["PMP", 6, 10, true], ["ALP", 1, 12, true], ["CMD", 1, 20, false]], ambulance: [["DCA", 3, 10, true], ["HART", 1, 20, false]], police: [["IRV", 4, 15, true]] },
     structure_fire: { fire: [["PMP", 3, 10, true]], ambulance: [["DCA", 1, 12, false]] },
     hazmat: { fire: [["PMP", 2, 12, true], ["HMU", 1, 15, true]], ambulance: [["HART", 1, 20, true], ["DCA", 1, 15, false]], police: [["IRV", 2, 15, true], ["DRONE", 1, 20, false]] },
@@ -182,9 +170,12 @@ window.SURU_MOCK = (function () {
       for (const u of chosen) {
         const from = u.incident_id, fromInc = incidentOf(from), fromResp = latestResponse(from);
         if (fromResp) {
+          // The donor only turns partial if it had asked for this unit type as essential.
+          const essential = fromResp.agent_responses.some((ar) => ar.requests.some((q) => q.resource_type === u.resource_type && q.essential));
           fromResp.allocations = fromResp.allocations.filter((a) => a.unit_id !== u.id);
-          fromResp.unmet.push({ resource_type: u.resource_type, type_name: tname, qty: 1, essential: true, mutual_aid: `Pre-empted by ${inc.id}; replacement requested via mutual aid` });
-          fromResp.status = "partial"; fromInc.status = "partial";
+          fromResp.unmet.push({ resource_type: u.resource_type, type_name: tname, qty: 1, essential, mutual_aid: `Pre-empted by ${inc.id}; replacement requested via mutual aid` });
+          fromResp.status = fromResp.unmet.some((x) => x.essential) ? "partial" : "dispatched";
+          if (fromInc.status !== "closed") fromInc.status = fromResp.status;
         }
         allocations.push(commit(u, inc, etaFor(u, inc) + 3, req, p.agency, from));
       }
@@ -325,7 +316,7 @@ window.SURU_MOCK = (function () {
       reallocateFreed();
       return ok(u);
     },
-    scenario: () => ok(SCENARIO),
+    scenario: () => fetch("scenarios/sheffield_demo.json").then((r) => r.json()),
     reset: () => { sleepers.forEach(clearTimeout); sleepers.length = 0; incidents.length = 0; responses.length = 0; events.length = 0;
       units.forEach((u) => { if (u.status === "committed") { u.status = "available"; u.incident_id = null; u.eta_min = null; } }); return ok({ ok: true }); },
   };

@@ -43,12 +43,15 @@
   <section class="centre">
     <div class="mapwrap">
       <div id="map" role="application" aria-label="Map of Sheffield incidents, stations and allocated units"></div>
-      <ul class="legend" aria-label="Map legend">
-        <li><i class="k-inc"></i>Incident, sized by severity</li>
-        <li><i class="k-station"></i>Station (agency colour)</li>
-        <li><i class="k-line"></i>Allocated unit, selected incident</li>
-        <li><i class="k-cordon"></i>Inner · outer · evacuation cordon</li>
-      </ul>
+      <details class="legend" id="legend" open>
+        <summary>Legend</summary>
+        <ul>
+          <li><i class="k-inc"></i>Incident: size = severity, colour = status</li>
+          <li><i class="k-station"></i>Station (agency colour)</li>
+          <li><i class="k-line"></i>Allocated unit, selected incident</li>
+          <li><i class="k-cordon"></i>Cordons: inner solid, outer dashed, evacuation dotted</li>
+        </ul>
+      </details>
     </div>
     <section class="drawer" id="drawer" aria-label="Incident detail" aria-live="polite">
       <p class="empty">Select an incident to see why the agents decided what they did.</p>
