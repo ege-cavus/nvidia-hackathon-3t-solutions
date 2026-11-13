@@ -71,3 +71,12 @@ Use [GitHub issues](https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/i
 architecture #1, graph simulation #2, model agents #3, dashboard #4, data/SOPs #5.
 Post contract requests, blockers and test results there. File leases and the
 shared contract are documented in [AGENTS.md](AGENTS.md).
+
+## Future Beat the Agents mode
+
+game_session.py provides independent human/agent worlds, a common incident tape
+and clock, controller-independent dispatch validation and command replay. The
+playable UI is pending. See [GAME_ARCHITECTURE.md](GAME_ARCHITECTURE.md) and
+[issue #6](https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/issues/6).
+The proposed next step is four incident profiles with type-specific stages,
+while retaining the current flood/fire/trauma hazard categories for compatibility.

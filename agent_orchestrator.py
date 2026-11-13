@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from knowledge_base import get_agency_sop
-from state_schema import AGENCIES, HERO_CAMERAS, get_initial_city_state, is_unit_available
+from state_schema import AGENCIES, HERO_CAMERAS, get_initial_city_state, is_unit_available, required_agencies_for_incident
 from sheffield_sim import SheffieldSim
 
 QWEN_MODEL = os.getenv("SURU_QWEN_MODEL", "Qwen3.8-27B")
@@ -85,8 +85,8 @@ async def _ask(client, model, schema, prompt, system, images=None, timeout=20):
 
 
 def _mandatory_agencies(hazard, severity, blocked):
-    agencies = ["AMBULANCE" if hazard == "trauma" else "FIRE"]
-    if blocked or (severity >= 6 and hazard in ("trauma", "flood")) or (severity >= 7 and hazard == "fire"):
+    agencies = required_agencies_for_incident({"hazard": hazard, "severity": severity, "road_blocked": blocked})
+    if severity >= 7 and hazard == "fire" and "POLICE" not in agencies:
         agencies.append("POLICE")
     return agencies
 
@@ -110,8 +110,8 @@ async def qwen_initial_triage(city_state, cam_id, *, sim=None, live=False, clien
                                 summary="OFFLINE synthetic triage; no vision inference performed.",
                                 required_agencies=_mandatory_agencies(incident["hazard"], incident["severity"], incident["road_blocked"]))
     required = list(dict.fromkeys(report.required_agencies + _mandatory_agencies(report.incident_type, report.severity, report.road_blocked)))
-    incident.update(hazard=report.incident_type, severity=report.severity, road_blocked=report.road_blocked,
-                    qwen_report={**report.model_dump(), "required_agencies": required, "timestamp": city_state["tick"]},
+    # Inference is an observation, not permission to rewrite simulation truth.
+    incident.update(qwen_report={**report.model_dump(), "required_agencies": required, "timestamp": city_state["tick"]},
                     status="NEMOTRON_NEGOTIATING", consensus_reached=False)
     _post(city_state, cam_id, "QWEN_TRIAGE", report.summary + " | Wake: " + ", ".join(required))
     return incident["qwen_report"]
@@ -174,6 +174,7 @@ def _offline_arbiter(sim, cam):
 
 async def resolve_board_or_qwen_takeover(city_state, cam_id, *, sim=None, live=False, client=None, timeout=20):
     sim = sim or SheffieldSim(city_state)
+    decision_tick = city_state["tick"]
     incident = city_state["active_incidents"][cam_id]
     if incident["status"] in ("UNITS_DISPATCHED", "RESOLVED"):
         return incident.get("dispatched_units", [])
@@ -184,7 +185,7 @@ async def resolve_board_or_qwen_takeover(city_state, cam_id, *, sim=None, live=F
     valid, reason = sim.validate_allocation(cam_id, units)
     agreed = valid and not incident.get("negotiation_failed", True) and {e["sender"] for e in board} == expected and len(board) == len(expected)
     if agreed:
-        sim.dispatch(cam_id, units)
+        sim.dispatch(cam_id, units, expected_tick=decision_tick)
         incident["consensus_reached"] = True
         for entry in board:
             entry["consensus_status"] = "AGREED"
@@ -212,7 +213,7 @@ async def resolve_board_or_qwen_takeover(city_state, cam_id, *, sim=None, live=F
     if not valid:
         _post(city_state, cam_id, "QWEN_GOLD_ARBITER", "Dispatch deferred: " + reason, decision.proposed_units, "DEADLOCK_TIMEOUT")
         return []
-    sim.dispatch(cam_id, decision.proposed_units)
+    sim.dispatch(cam_id, decision.proposed_units, expected_tick=decision_tick)
     _post(city_state, cam_id, "QWEN_GOLD_ARBITER", decision.proposal_text, decision.proposed_units, "QWEN_OVERRIDDEN")
     return decision.proposed_units
 

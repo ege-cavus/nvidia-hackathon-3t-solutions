@@ -15,4 +15,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["state_schema", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]
+py-modules = ["state_schema", "game_session", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]

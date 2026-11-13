@@ -6,7 +6,7 @@ import random
 from pathlib import Path
 import networkx as nx
 from knowledge_base import NODE_HISTORICAL_PROBABILITIES
-from state_schema import EMERGENCY_HUBS, HERO_CAMERAS, get_initial_city_state, is_unit_available, make_incident
+from state_schema import DispatchCommand, EMERGENCY_HUBS, HERO_CAMERAS, get_initial_city_state, is_unit_available, make_incident, required_agencies_for_incident
 
 
 def _distance(a, b):
@@ -117,7 +117,11 @@ class SheffieldSim:
         return estimates
 
     def validate_allocation(self, cam_id, unit_ids):
+        if cam_id not in self.state["active_incidents"]:
+            return False, "Unknown incident"
         incident = self.state["active_incidents"][cam_id]
+        if incident["status"] in ("UNITS_DISPATCHED", "RESOLVED"):
+            return False, "Incident already dispatched or resolved"
         if not isinstance(unit_ids, list) or any(not isinstance(u, str) for u in unit_ids):
             return False, "Unit allocation must be a list of IDs"
         if len(unit_ids) != len(set(unit_ids)) or not unit_ids:
@@ -126,9 +130,7 @@ class SheffieldSim:
             return False, "Unknown or unavailable unit"
         units = [self.state["resource_db"][u] for u in unit_ids]
         agencies = {u["agency"] for u in units}
-        if not incident["qwen_report"]["required_agencies"]:
-            return False, "Triage required before dispatch"
-        if not set(incident["qwen_report"]["required_agencies"]).issubset(agencies):
+        if not set(required_agencies_for_incident(incident)).issubset(agencies):
             return False, "Missing required agency"
         if (incident["road_blocked"] or (incident["severity"] >= 6 and incident["hazard"] in ("flood", "trauma"))) and "POLICE" not in agencies:
             return False, "Police cordon required"
@@ -154,7 +156,30 @@ class SheffieldSim:
         unit["total_depletion_ticks_remaining"] = sum(unit[k] for k in
             ("travel_to_scene_ticks", "on_scene_ticks", "return_to_base_ticks", "cooldown_ticks_remaining"))
 
-    def dispatch(self, cam_id, unit_ids):
+    def apply_command(self, command: DispatchCommand) -> dict:
+        """Single dispatch boundary for UI, agents and replay; rejected work is inert."""
+        if not isinstance(command, DispatchCommand):
+            raise TypeError("Expected DispatchCommand")
+        accepted, reason = False, "Stale decision tick"
+        if command.expected_tick == self.state["tick"]:
+            accepted, reason = self.validate_allocation(command.cam_id, list(command.unit_ids))
+            if accepted:
+                self._dispatch(command.cam_id, list(command.unit_ids))
+        receipt = {"tick": self.state["tick"], "expected_tick": command.expected_tick,
+                   "controller": command.controller, "cam_id": command.cam_id,
+                   "unit_ids": list(command.unit_ids), "accepted": accepted, "reason": reason}
+        self.state.setdefault("command_log", []).append(receipt)
+        return dict(receipt, unit_ids=list(receipt["unit_ids"]))
+
+    def dispatch(self, cam_id, unit_ids, *, controller="AGENTS", expected_tick=None):
+        """Compatibility adapter; all callers use the same command validation."""
+        receipt = self.apply_command(DispatchCommand(
+            cam_id, tuple(unit_ids), self.state["tick"] if expected_tick is None else expected_tick, controller))
+        if not receipt["accepted"]:
+            raise ValueError(receipt["reason"])
+        return receipt
+
+    def _dispatch(self, cam_id, unit_ids):
         valid, reason = self.validate_allocation(cam_id, unit_ids)
         if not valid:
             raise ValueError(reason)

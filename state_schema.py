@@ -5,6 +5,8 @@ Hazards are flood/fire/trauma. blocked_edges holds OSM (u, v, key) tuples.
 Every caller owns its returned mutable state. No global CITY_STATE singleton.
 """
 from copy import deepcopy
+from dataclasses import dataclass
+from typing import Literal
 
 HERO_CAMERAS = {
     "CAM_01": {"name": "Sheaf St / Sheffield Station", "lat": 53.3782, "lon": -1.4628},
@@ -30,6 +32,33 @@ EMERGENCY_HUBS = {
 
 
 AGENCIES = ("FIRE", "POLICE", "AMBULANCE")
+
+
+@dataclass(frozen=True)
+class DispatchCommand:
+    """Controller-independent decision; expected_tick rejects stale UI/model work."""
+    cam_id: str
+    unit_ids: tuple[str, ...]
+    expected_tick: int
+    controller: Literal["HUMAN", "AGENTS"]
+
+    def __post_init__(self):
+        if not isinstance(self.cam_id, str) or not self.cam_id:
+            raise ValueError("cam_id must be a nonempty string")
+        if type(self.unit_ids) is not tuple or any(not isinstance(u, str) for u in self.unit_ids):
+            raise ValueError("unit_ids must be a tuple of strings")
+        if type(self.expected_tick) is not int or self.expected_tick < 0:
+            raise ValueError("expected_tick must be a nonnegative integer")
+        if self.controller not in ("HUMAN", "AGENTS"):
+            raise ValueError("Unknown controller")
+
+
+def required_agencies_for_incident(incident: dict) -> list[str]:
+    """World rules depend on authoritative facts, never a controller's report."""
+    agencies = ["AMBULANCE" if incident["hazard"] == "trauma" else "FIRE"]
+    if incident["road_blocked"] or (incident["severity"] >= 6 and incident["hazard"] in ("flood", "trauma")):
+        agencies.append("POLICE")
+    return agencies
 
 
 def is_unit_available(unit: dict) -> bool:
@@ -75,5 +104,5 @@ def get_initial_city_state() -> dict:
         },
         "node_probabilities": NODE_HISTORICAL_PROBABILITIES,
         "active_incidents": {}, "resource_db": resources, "blocked_edges": [],
-        "message_board": [], "routing": {"mode": "not_loaded", "tick_seconds": 60},
+        "message_board": [], "command_log": [], "routing": {"mode": "not_loaded", "tick_seconds": 60},
     })

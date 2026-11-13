@@ -81,3 +81,15 @@ and set SURU_QWEN_MODEL / SURU_NEMOTRON_MODEL on the demo host.
 The 212-camera GeoJSON and five Cosmos videos must be supplied locally with
 provenance/licensing; missing assets are shown explicitly. Preserve .gitkeep;
 MP4 files remain ignored. No model weights or live CCTV feeds are bundled.
+
+## Future solo game architecture (issue #6)
+
+game_session.py is a shared integration-owned module, not part of a track lease.
+See GAME_ARCHITECTURE.md before wiring a human-versus-agents mode. Human controls
+and agents must use DispatchCommand/apply_command; world validation must never
+require a Qwen report. Model reports are hypotheses and must not overwrite world
+hazard/severity. Keep separate human/agent worlds with identical event tapes,
+road graphs, rules and ticks; do not compare independent conditional RNG streams.
+The UI must complete both decision windows before advancing. command_log enables
+replay. Agree the four-profile incident catalogue and stage progression with
+Track 4/Track 1; current severity logic is not yet capability-aware progression.
