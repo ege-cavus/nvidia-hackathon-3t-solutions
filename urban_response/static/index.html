@@ -224,7 +224,7 @@ table.data .num { text-align: right; }
 .toggle { font-size: 12px; font-weight: 700; padding: 0 7px; border-radius: 4px; cursor: pointer; border: 1px solid var(--c); background: var(--c); color: var(--ground); }
 .toggle[aria-pressed="false"] { background: transparent; color: var(--mute); border-color: var(--rule); text-decoration: line-through; }
 .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); display: inline-block; }
-.live-dot.on { background: var(--ok); animation: blink 1.6s ease-in-out infinite; }
+.live-dot.on { background: var(--ok); }
 @keyframes blink { 50% { opacity: 0.35; } }
 .feed { list-style: none; padding: 0; margin: 0; }
 .ev { border-bottom: 1px solid var(--rule); }
@@ -242,7 +242,7 @@ table.data .num { text-align: right; }
 .foot { height: var(--foot-h); display: flex; align-items: center; gap: 16px; padding: 0 18px; border-top: 1px solid var(--rule); font-size: 13px; color: var(--mute); }
 
 /* Dialogs */
-dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5); max-height: calc(100vh - 40px); }
+dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--rule); border-radius: 10px; padding: 18px 20px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); max-height: calc(100vh - 40px); }
 dialog::backdrop { background: rgba(4, 12, 16, 0.65); }
 dialog h2 { font-size: 20px; margin-bottom: 10px; }
 /* Non-modal side drawer, so a map click can set the call's location while it is open. */
