@@ -23,6 +23,11 @@ const ALLOWED = [
   /^resources\/[\w-]+\/forecast$/,
   /^units\/[\w-]+\/release$/,
   /^healthz$/,
+  // Demo dashboard (urban_response/ui_adapter.py)
+  /^ui\/(health|incidents|responses|events|stations|hospitals|units|resources|scenario|reset)$/,
+  /^ui\/incidents\/\d+\/(close|responses)$/,
+  /^ui\/units\/[\w%.-]+\/release$/,
+  /^ui\/resources\/[\w-]+\/forecast$/,
 ];
 
 const json = (status, detail) =>

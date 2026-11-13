@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SURU Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><strong>SURU</strong><span>Sheffield Urban Response</span></div>
+  <span class="mode" id="mode" role="status" title="Backend mode from GET /health">connecting…</span>
+  <div class="actions">
+    <button class="btn primary" id="run-demo" type="button">▶ Run demo scenario</button>
+    <button class="btn" id="new-incident" type="button">+ Incident</button>
+    <button class="btn" id="reset-demo" type="button" title="Clear incidents and return every unit to service">↺ Reset</button>
+    <button class="btn" id="open-resources" type="button">▦ Resource DB</button>
+  </div>
+</header>
+
+<section class="metrics" id="metrics" aria-label="Success metrics"></section>
+
+<main class="wall">
+  <aside class="side" aria-label="Ongoing incidents">
+    <h2 class="head">Ongoing incidents <span id="ongoing-count"></span></h2>
+    <div class="chips" id="chips" role="group" aria-label="Filter by incident type">
+      <button type="button" data-chip="all" aria-pressed="true">All</button>
+      <button type="button" data-chip="fire" aria-pressed="false">Fire</button>
+      <button type="button" data-chip="police" aria-pressed="false">Police</button>
+      <button type="button" data-chip="medical" aria-pressed="false">Medical</button>
+      <button type="button" data-chip="traffic" aria-pressed="false">Traffic</button>
+      <button type="button" data-chip="hazmat" aria-pressed="false">Hazmat / Env</button>
+      <button type="button" data-chip="other" aria-pressed="false" hidden>Other</button>
+    </div>
+    <div id="ongoing"></div>
+    <details class="fold" id="backlog-fold"><summary>Backlog <span id="backlog-count">(0)</span></summary><div id="backlog"></div></details>
+    <details class="fold" id="closed-fold"><summary>Closed <span id="closed-count">(0)</span></summary><div id="closed"></div></details>
+  </aside>
+
+  <section class="centre">
+    <div class="mapwrap">
+      <div id="map" role="application" aria-label="Map of Sheffield incidents, stations and allocated units"></div>
+      <details class="legend" id="legend" open>
+        <summary>Legend</summary>
+        <ul>
+          <li><i class="k-inc"></i>Incident: size = severity, colour = status</li>
+          <li><i class="k-station"></i>Station (agency colour)</li>
+          <li><i class="k-line"></i>Allocated unit, selected incident</li>
+          <li><i class="k-cordon"></i>Cordons: inner solid, outer dashed, evacuation dotted</li>
+        </ul>
+      </details>
+    </div>
+    <section class="drawer" id="drawer" aria-label="Incident detail" aria-live="polite">
+      <p class="empty">Select an incident to see why the agents decided what they did.</p>
+    </section>
+  </section>
+
+  <aside class="rail" aria-label="Agent observability">
+    <div class="rail-head">
+      <h2 class="head"><i class="live-dot" id="live-dot" aria-hidden="true"></i>Agent observability</h2>
+      <section class="net" aria-labelledby="net-title">
+        <p class="net-title" id="net-title">Agent interaction</p>
+        <svg id="net" viewBox="0 0 340 214" role="group" aria-label="How Qwen, A1, A2, A3 and CR interacted on this incident"></svg>
+        <p class="net-detail" id="net-detail" aria-live="polite"></p>
+      </section>
+      <div class="rail-controls">
+        <div class="agent-toggles" id="agent-toggles" role="group" aria-label="Show agents in the feed"></div>
+        <label><input type="checkbox" id="feed-follow"> Follow selected</label>
+        <button class="btn small" id="feed-pause" type="button" aria-pressed="false">Pause</button>
+      </div>
+    </div>
+    <button class="btn small new-events" id="feed-new" type="button" hidden></button>
+    <ol class="feed" id="feed"></ol>
+  </aside>
+</main>
+
+<footer class="foot">
+  <button class="link" id="about-open" type="button">About this data</button>
+  <a class="link" id="console-link" href="console" hidden>Engine console</a>
+  <span id="foot-note"></span>
+</footer>
+
+<dialog id="incident-dialog" aria-labelledby="incident-dialog-title">
+  <form id="incident-form" method="dialog" class="form">
+    <h2 id="incident-dialog-title">New incident</h2>
+    <div class="grid2">
+      <label>Category
+        <select name="category" required>
+          <option value="rtc">Road traffic collision</option><option value="structure_fire">Structure fire</option>
+          <option value="high_rise_fire">High-rise fire</option><option value="firearms">Firearms</option>
+          <option value="assault">Assault</option><option value="medical">Medical emergency</option>
+          <option value="hazmat">Hazmat</option><option value="flood">Flood</option>
+        </select></label>
+      <label>Severity (1–5)<input name="severity" type="number" min="1" max="5" value="3" required></label>
+      <label>Address<input name="address" required placeholder="Street, area"></label>
+      <label>District<input name="district" placeholder="e.g. Darnall"></label>
+      <label>Latitude<input name="lat" type="number" step="0.0001" value="53.3811" required></label>
+      <label>Longitude<input name="lon" type="number" step="0.0001" value="-1.4701" required></label>
+      <label>Casualties<input name="casualties" type="number" min="0" value="0"></label>
+      <label>Trapped<input name="trapped" type="number" min="0" value="0"></label>
+    </div>
+    <label>Description<textarea name="description" rows="2" required></textarea></label>
+    <label>Hazards (comma separated)<input name="hazards" placeholder="fuel spill, live cables"></label>
+    <p class="error" id="incident-error" role="alert"></p>
+    <div class="row-end"><button class="btn" type="button" data-close>Cancel</button><button class="btn primary" type="submit">Create incident</button></div>
+  </form>
+</dialog>
+
+<dialog id="resources-dialog" aria-labelledby="resources-title">
+  <div class="dialog-head">
+    <h2 id="resources-title">Resource database</h2>
+    <div class="tabs" id="agency-tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-agency="">All</button>
+      <button role="tab" aria-selected="false" data-agency="police">Police</button>
+      <button role="tab" aria-selected="false" data-agency="fire">Fire</button>
+      <button role="tab" aria-selected="false" data-agency="ambulance">Ambulance</button>
+      <button role="tab" aria-selected="false" data-agency="shared">Shared</button>
+    </div>
+    <button class="btn" type="button" data-close>Close</button>
+  </div>
+  <div id="resources-body"></div>
+  <h3 class="sub">Hospitals</h3>
+  <div id="hospitals"></div>
+</dialog>
+
+<dialog id="about-dialog" aria-labelledby="about-title">
+  <h2 id="about-title">About this data</h2>
+  <div id="about-body" class="prose"></div>
+  <div class="row-end"><button class="btn" type="button" data-close>Close</button></div>
+</dialog>
+
+<dialog id="connect">
+  <form id="connect-form" method="dialog" class="form">
+    <h2>Backend address</h2>
+    <p>Leave empty to run the built-in mock scenario, or paste the urban_response API address (for example a tunnel to the DGX Spark).</p>
+    <label>API base URL<input id="api-url" type="url" placeholder="https://example.trycloudflare.com"></label>
+    <p class="error" id="connect-error" role="alert"></p>
+    <div class="row-end"><button class="btn primary" type="submit">Connect</button></div>
+  </form>
+</dialog>
+
+<script src="config.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="mock.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

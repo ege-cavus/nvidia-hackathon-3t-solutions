@@ -1,4 +1,8 @@
-"""HTTP API and live console. Run with: urban-response serve  (then open http://localhost:8000)."""
+"""HTTP API and both UIs. Run with: urban-response serve  (then open http://localhost:8000).
+
+  /          SURU Command demo dashboard (web/, by Severian0), fed by /ui/* (ui_adapter.py)
+  /console   the engine console (static/index.html): raw pipeline stages, jobs, ledger, bursts
+"""
 
 from __future__ import annotations
 
@@ -23,8 +27,11 @@ from .config import ROOT, get_settings
 from .db import Database
 from .schemas import Incident, IncidentStatus, PipelineResult
 from .seed import seed
+from .ui_adapter import EventFeed, make_router
 
 STATIC = Path(__file__).parent / "static"
+WEB = ROOT / "web"  # demo dashboard
+WEB_ASSETS = {"app.js", "api.js", "mock.js", "style.css"}
 state: dict = {}
 
 
@@ -40,6 +47,7 @@ async def lifespan(app: FastAPI):
         # A second orchestrator in mock mode so the console can run instantly without an LLM.
         orch_mock=Orchestrator(db, replace(settings, llm_mode="mock")),
         jobs={},
+        feed=EventFeed(),
     )
 
     async def sweeper():
@@ -47,11 +55,16 @@ async def lifespan(app: FastAPI):
         while True:
             await asyncio.sleep(5)
             try:
-                db.release_due()
+                released = db.release_due()
+                if released:
+                    state["feed"].units_returned(released)
             except Exception:  # keep sweeping even if one pass fails
                 pass
 
     sweep = asyncio.create_task(sweeper())
+    # Warm MiniLM in the background so the first report is not slowed by model loading.
+    from . import dedup
+    asyncio.create_task(asyncio.to_thread(dedup.load_model))
     yield
     sweep.cancel()
     db.close()
@@ -102,11 +115,29 @@ def healthz():
 
 
 @app.get("/", include_in_schema=False)
+def dashboard():
+    return FileResponse(WEB / "index.html")
+
+
+@app.get("/config.js", include_in_schema=False)
+def dashboard_config_js():
+    """Point the dashboard at this server (web/config.js alone would start the in-browser mock)."""
+    return PlainTextResponse("window.SURU_API_BASE = location.origin;", media_type="application/javascript")
+
+
+@app.get("/scenarios/sheffield_demo.json", include_in_schema=False)
+def dashboard_scenario():
+    return FileResponse(WEB / "scenarios" / "sheffield_demo.json")
+
+
+@app.get("/console", include_in_schema=False)
+@app.get("/console/", include_in_schema=False)
 def console():
     return FileResponse(STATIC / "index.html")
 
 
 @app.get("/suru-config.js", include_in_schema=False)
+@app.get("/console/suru-config.js", include_in_schema=False)
 def console_config_js():
     """Served by FastAPI the console calls its own origin; the Vercel build overrides this file."""
     return PlainTextResponse('window.SURU_API_BASE = "";', media_type="application/javascript")
@@ -149,12 +180,12 @@ def personnel():
 
 
 @app.get("/api/ledger")
-def ledger(limit: int = 100, incident_id: str | None = None):
+def ledger(limit: int = 100, incident_id: int | None = None):
     return state["db"].ledger(limit, incident_id)
 
 
 @app.get("/api/brief/{incident_id}")
-def brief(incident_id: str):
+def brief(incident_id: int):
     """Normalised, phone-sized incident brief: headline, facts, orders, units with crews, log."""
     b = build_brief(state["db"], incident_id)
     if not b:
@@ -212,13 +243,20 @@ async def run(req: RunRequest):
 async def _start_job(incident: Incident, mode: str) -> dict:
     orch = state["orch"] if mode == "live" else state["orch_mock"]
     job_id = uuid4().hex[:10]
-    label = f"{incident.category.replace('_', ' ')} · {incident.location.address or incident.incident_id}"
+    where = incident.location.address or incident.location.landmark or "unknown location"
+    label = f"{incident.channel} · {where}"
     job = {"events": [], "done": False, "cond": asyncio.Condition(), "incident_id": incident.incident_id, "label": label}
     state["jobs"][job_id] = job
     loop = asyncio.get_running_loop()
     t0 = loop.time()
 
     async def on_event(name: str, payload: dict) -> None:
+        if name == "ingested":  # the database assigns the numeric id at intake
+            job["incident_id"] = payload["incident"]["incident_id"]
+        try:
+            state["feed"].on_job_event(job["incident_id"], name, payload)
+        except Exception:  # the dashboard feed must never break a pipeline run
+            pass
         async with job["cond"]:
             job["events"].append({"event": name, "t": round(loop.time() - t0, 2), "data": payload})
             job["cond"].notify_all()
@@ -269,7 +307,11 @@ def reset():
         raise HTTPException(409, "Wait for running incidents to finish")
     seed(state["db"], force=True)
     state["jobs"].clear()
+    state["feed"].clear()
     return {"ok": True}
+
+
+app.include_router(make_router(state, _start_job, reset))
 
 
 # ---- Incident DB ---------------------------------------------------------------- #
@@ -306,7 +348,7 @@ def backlog():
 
 
 @app.get("/incidents/{incident_id}")
-def get_incident(incident_id: str):
+def get_incident(incident_id: int):
     inc = state["db"].get_incident(incident_id)
     if not inc:
         raise HTTPException(404)
@@ -314,14 +356,14 @@ def get_incident(incident_id: str):
 
 
 @app.get("/incidents/{incident_id}/responses")
-def incident_responses(incident_id: str):
+def incident_responses(incident_id: int):
     if not state["db"].get_incident(incident_id):
         raise HTTPException(404)
     return state["db"].responses(incident_id)
 
 
 @app.post("/incidents/{incident_id}/close")
-def close_incident(incident_id: str):
+def close_incident(incident_id: int):
     if not state["db"].get_incident(incident_id):
         raise HTTPException(404)
     return {"units_released": state["db"].close_incident(incident_id)}
@@ -336,7 +378,7 @@ def list_responses():
 
 
 @app.get("/responses/{response_id}")
-def get_response(response_id: str):
+def get_response(response_id: int):
     r = state["db"].get_response(response_id)
     if not r:
         raise HTTPException(404)
@@ -344,7 +386,7 @@ def get_response(response_id: str):
 
 
 @app.get("/conflicts")
-def conflicts(incident_id: str | None = None, response_id: str | None = None):
+def conflicts(incident_id: int | None = None, response_id: int | None = None):
     return state["db"].conflict_log(incident_id, response_id)
 
 
@@ -352,7 +394,7 @@ def conflicts(incident_id: str | None = None, response_id: str | None = None):
 
 
 @app.post("/units/{unit_id}/release")
-def release_unit(unit_id: str):
+def release_unit(unit_id: int):
     return {"released": state["db"].release_unit(unit_id)}
 
 
@@ -366,3 +408,11 @@ def forecast(resource_type: str, horizon_min: int = 120):
     if resource_type not in state["db"].resource_types():
         raise HTTPException(404)
     return state["db"].availability_forecast(resource_type, horizon_min)
+
+
+# Registered last so it never shadows an API route.
+@app.get("/{asset}", include_in_schema=False)
+def dashboard_asset(asset: str):
+    if asset not in WEB_ASSETS:
+        raise HTTPException(404)
+    return FileResponse(WEB / asset)
