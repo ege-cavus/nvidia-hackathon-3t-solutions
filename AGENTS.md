@@ -1,7 +1,7 @@
 # SURU team and agent boundaries
 
-SURU is a hackathon simulation: graph world -> Qwen vision triage and selective
-routing -> selected Nemotron agency proposals -> validated consensus or Qwen takeover.
+SURU uses authored incident reports and demo media -> Qwen selective routing ->
+Nemotron proposals -> validated allocation -> report-driven world/outcome updates.
 No RL/PPO training is used.
 
 ## Shared contracts
@@ -93,3 +93,20 @@ road graphs, rules and ticks; do not compare independent conditional RNG streams
 The UI must complete both decision windows before advancing. command_log enables
 replay. Agree the four-profile incident catalogue and stage progression with
 Track 4/Track 1; current severity logic is not yet capability-aware progression.
+
+## Active report-driven integration path
+
+The authored-report pipeline is documented in REPORT_PIPELINE.md. report_world.py
+is integration-owned; it reuses graph/resource/scoring helpers from Track 1.
+It does not run legacy random spawning or intensity escalation. Caller reports
+validate against schemas/incident.schema.json (the supplied jsonformal.txt).
+Scenario-private spread links and response requirements stay outside report JSON
+and outside the Qwen observation export. New affected nodes emit fresh timed
+reports with causal links in the separate event ledger. Response success derives
+from observed on-scene capabilities/work, not an LLM grading itself.
+
+Tracks 2/3 should integrate qwen_observation(incident_id) and the report/outcome
+ledgers; current legacy adapters do not consume ReportDrivenWorld automatically.
+Demo images are pre-generated assets referenced per report; missing media is
+explicit. Preserve these interfaces and coordinate schema/profile changes with
+Track 4. Legacy sheffield_sim.py scenarios remain experimental regression tools.
