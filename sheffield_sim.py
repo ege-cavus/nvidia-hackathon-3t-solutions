@@ -1,4 +1,15 @@
-"""Track 1: directed graph world, minute-tick resource depletion and scorecard."""
+"""Track 1: directed graph world, resource depletion and effective response scoring.
+
+Opt-in Park Square flood probe (real cached/downloaded roads required by CLI):
+    python sheffield_sim.py --download-osm --flood-demo --ticks 60
+    python sheffield_sim.py --flood-demo --ticks 60 --response-delay 15
+    python sheffield_sim.py --cosmos-manifest
+
+Flood intensity is normalized 0..10, NOT water depth. Standoff, escalation and
+work rates are explicit demonstration assumptions, not calibrated hydrodynamics.
+Staged observation/reinforcement fields are additive; the agent/UI adapters still
+need to consume them. Existing generic scenarios keep their original behaviour.
+"""
 import argparse
 import json
 import math
@@ -153,6 +164,95 @@ class SheffieldSim:
         self.state["blocked_edges"] = sorted(external | {tuple(e) for edges in registry.values() for e in edges}, key=str)
         return self.state["blocked_edges"]
 
+    def select_staging_location(self, cam_id, min_standoff_m=50, max_distance_m=350):
+        """Find a provisional staging node; not an assertion of real flood safety.
+
+        Remove the threatened street BEFORE selecting access. Require a directed
+        round trip from all six station access nodes. The 50m standoff is a game
+        assumption; real flood footprints/entrances need manual verification.
+        """
+        if not 0 <= min_standoff_m <= max_distance_m:
+            raise ValueError("Invalid staging distance bounds")
+        mappings = getattr(self, "location_mappings", None) or self.build_location_mappings()
+        threatened = self.camera_road_edges(cam_id)
+        graph = self.graph.copy()
+        graph.remove_edges_from([tuple(e) for e in self.state["blocked_edges"]] + threatened)
+        bases = {mappings[hub]["access_node"] for hub in EMERGENCY_HUBS}
+        component = next((c for c in nx.strongly_connected_components(graph) if bases <= c), set())
+        forbidden_nodes = {n for u, v, _ in threatened for n in (u, v)}
+        candidates = []
+        for node in component - forbidden_nodes:
+            point = {"lat": graph.nodes[node]["y"], "lon": graph.nodes[node]["x"]}
+            distance = _distance(HERO_CAMERAS[cam_id], point)
+            if min_standoff_m <= distance <= max_distance_m:
+                candidates.append((distance, str(node), node, point))
+        if not candidates:
+            raise nx.NetworkXNoPath("No staging node with unblocked round trips to all bases")
+        distance, _, node, point = min(candidates)
+        return {**point, "graph_node": node, "distance_from_camera_m": round(distance, 1),
+                "safety_status": "SIMULATION_STANDOFF_UNVERIFIED", "excluded_edges": threatened}
+
+    def start_park_square_flood(self):
+        """Opt-in three-stage demo. Generic incident behaviour remains unchanged."""
+        cam_id = "CAM_08"
+        previous = self.state["active_incidents"].get(cam_id)
+        if previous and previous["status"] != "RESOLVED":
+            raise ValueError("Park Square already has an active incident")
+        if any(u["assigned_cam"] == cam_id for u in self.state["resource_db"].values()):
+            raise ValueError("Previous incident still holds resources")
+        staging = self.select_staging_location(cam_id)
+        incident = make_incident(cam_id, "flood", 3, self.state["tick"])
+        incident.update(incident_type="flood", progression_model="park_square_flood_v1",
+                        water_level=3.0, water_level_unit="NORMALISED_0_10_NOT_METRES", stage="POOLING", stage_elapsed_ticks=0,
+                        stage_history=[{"tick": self.state["tick"], "stage": "POOLING"}],
+                        staging_location=staging, hazard_edges=staging["excluded_edges"],
+                        response_requirements=["FIRE"], reinforcement_required=["FIRE"],
+                        control_state="NO_EFFECTIVE_RESPONSE")
+        self._set_flood_visual(incident)
+        self.state["active_incidents"][cam_id] = incident
+        return incident
+
+    @staticmethod
+    def _set_flood_visual(incident):
+        # An observation contract for Cosmos preparation, not generated footage.
+        stem = f"assets/hero_cams_disaster/{incident['cam_id']}_flood_{incident['stage']}"
+        incident["visual_observation"] = {"camera_id": incident["cam_id"], "incident_type": "flood",
+            "stage": incident["stage"], "clip_path": stem + ".mp4", "frame_path": stem + ".jpg",
+            "asset_status": "LOCAL_ASSET" if Path(stem + ".mp4").is_file() else "PLACEHOLDER"}
+
+    def _update_flood(self, cam_id, incident):
+        on_scene = {u["agency"] for u in self.state["resource_db"].values()
+                    if u["assigned_cam"] == cam_id and u["status"] == "DEPLETED_ON_SCENE"}
+        required = set(incident["response_requirements"])
+        if required <= on_scene:
+            self._record_response(incident)
+            incident["water_level"] = max(0.0, incident["water_level"] - 1.0)
+            incident["control_state"] = "CONTROLLED"
+        elif "FIRE" in on_scene:
+            incident["water_level"] = min(10.0, incident["water_level"] + 0.25)
+            incident["control_state"] = "PARTIAL_RESPONSE"
+        else:
+            incident["water_level"] = min(10.0, incident["water_level"] + 0.5)
+            incident["control_state"] = "NO_EFFECTIVE_RESPONSE"
+        level = incident["water_level"]
+        stage = "CLEARED" if level == 0 else "POOLING" if level <= 3 else "ROAD_FLOODED" if level <= 6 else "VEHICLES_TRAPPED"
+        if stage != incident["stage"]:
+            incident["stage"] = stage
+            incident["stage_elapsed_ticks"] = 0
+            incident["stage_history"].append({"tick": self.state["tick"], "stage": stage})
+            self._set_flood_visual(incident)
+        else:
+            incident["stage_elapsed_ticks"] += 1
+        blocked = level > 3
+        if blocked != incident["road_blocked"]:
+            self.set_camera_road_closed(cam_id, blocked)
+        incident["road_blocked"] = blocked
+        incident["severity"] = max(1, min(10, math.ceil(level)))
+        incident["response_requirements"] = ["FIRE", "POLICE"] if blocked else ["FIRE"]
+        committed = {u["agency"] for u in self.state["resource_db"].values()
+                     if u["assigned_cam"] == cam_id and u["status"] in ("DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE")}
+        incident["reinforcement_required"] = sorted(set(incident["response_requirements"]) - committed) if level else []
+
     def road_verification_report(self):
         mappings = self.build_location_mappings()
         routes = {}
@@ -171,9 +271,9 @@ class SheffieldSim:
                                 "Inferred speeds are estimates; no live traffic",
                                 "Study-area boundary can truncate routes; expand if routes are unreachable"]}
 
-    def _route(self, start, end):
+    def _route(self, start, end, excluded_edges=()):
         graph = self.graph.copy()
-        for edge in self.state["blocked_edges"]:
+        for edge in list(self.state["blocked_edges"]) + list(excluded_edges):
             if len(edge) == 3 and graph.has_edge(*edge):
                 graph.remove_edge(*edge)
         a, b = self._nearest(start), self._nearest(end)
@@ -194,12 +294,15 @@ class SheffieldSim:
 
     def estimate_depletion_ticks(self, unit_id, cam_id, severity):
         unit = self.state["resource_db"][unit_id]
-        camera, home = HERO_CAMERAS[cam_id], EMERGENCY_HUBS[unit["home_hub"]]
-        outward = self._route(unit, camera)
+        incident = self.state["active_incidents"].get(cam_id, {})
+        camera = incident.get("staging_location", HERO_CAMERAS[cam_id])
+        home = EMERGENCY_HUBS[unit["home_hub"]]
+        excluded = incident.get("hazard_edges", ())
+        outward = self._route(unit, camera, excluded)
         # Trauma patients go to Northern General; Hallamshire is only a demo base.
         hospital = EMERGENCY_HUBS["NHS_NORTHERN_GEN"] if unit["agency"] == "AMBULANCE" else home
-        returning = self._route(camera, hospital)
-        final = self._route(hospital, home) if hospital is not home and hospital != home else None
+        returning = self._route(camera, hospital, excluded)
+        final = self._route(hospital, home, excluded) if hospital is not home and hospital != home else None
         cooldown = 2 if unit["agency"] in ("FIRE", "AMBULANCE") else 0
         scene = int(severity) + 2
         return {"travel_to_scene_ticks": outward["ticks"], "on_scene_ticks": scene,
@@ -223,7 +326,9 @@ class SheffieldSim:
         if cam_id not in self.state["active_incidents"]:
             return False, "Unknown incident"
         incident = self.state["active_incidents"][cam_id]
-        if incident["status"] in ("UNITS_DISPATCHED", "RESOLVED"):
+        staged = incident.get("progression_model") == "park_square_flood_v1"
+        reinforcing = incident["status"] == "UNITS_DISPATCHED" and staged
+        if incident["status"] == "RESOLVED" or (incident["status"] == "UNITS_DISPATCHED" and not staged):
             return False, "Incident already dispatched or resolved"
         if not isinstance(unit_ids, list) or any(not isinstance(u, str) for u in unit_ids):
             return False, "Unit allocation must be a list of IDs"
@@ -232,13 +337,18 @@ class SheffieldSim:
         if any(u not in self.state["resource_db"] or not is_unit_available(self.state["resource_db"][u]) for u in unit_ids):
             return False, "Unknown or unavailable unit"
         units = [self.state["resource_db"][u] for u in unit_ids]
-        agencies = {u["agency"] for u in units}
-        if not set(required_agencies_for_incident(incident)).issubset(agencies):
+        existing = [u for u in self.state["resource_db"].values() if staged and u["assigned_cam"] == cam_id
+                    and u["status"] in ("DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE")]
+        if reinforcing and not (set(incident["response_requirements"]) - {u["agency"] for u in existing}) & {u["agency"] for u in units}:
+            return False, "Reinforcement must supply a missing capability"
+        agencies = {u["agency"] for u in units + existing}
+        required = set(required_agencies_for_incident(incident)) | set(incident.get("response_requirements", []))
+        if not required.issubset(agencies):
             return False, "Missing required agency"
         if (incident["road_blocked"] or (incident["severity"] >= 6 and incident["hazard"] in ("flood", "trauma"))) and "POLICE" not in agencies:
             return False, "Police cordon required"
         if incident["severity"] >= 7 and incident["hazard"] in ("fire", "flood"):
-            pumps = sum(u["agency"] == "FIRE" for u in units)
+            pumps = sum(u["agency"] == "FIRE" for u in units + existing)
             if pumps < 2 and not (pumps >= 1 and "POLICE" in agencies):
                 return False, "High severity rescue requires pumps or pump plus cordon"
         flood_risk = max(p["spawn_probability"] * p["hazard_weights"]["flood"] for p in self.state["node_probabilities"].values())
@@ -301,19 +411,34 @@ class SheffieldSim:
             if plan["final_route"]:
                 phases.append(self._phase("DEPLETED_RETURNING", "return_to_base_ticks", plan["final_route"]))
             unit.update(status="DEPLETED_EN_ROUTE", assigned_cam=cam_id, phases=phases)
-        incident.update(status="UNITS_DISPATCHED", dispatched_units=list(unit_ids))
+        incident.update(status="UNITS_DISPATCHED", dispatched_units=list(dict.fromkeys(incident.get("dispatched_units", []) + list(unit_ids))))
 
     @staticmethod
     def _phase(status, timer, route):
         return {"status": status, "timer": timer, "remaining": route["ticks"],
                 "duration": route["ticks"], "route": route}
 
+    def _record_response(self, incident):
+        if incident["response_ticks"] is not None:
+            return
+        response = self.state["tick"] - incident["spawn_tick"]
+        incident["response_ticks"] = response
+        metrics = self.state["effectiveness_metrics"]
+        count = metrics.get("response_sample_count", 0)
+        metrics["avg_response_ticks"] = (metrics["avg_response_ticks"] * count + response)/(count+1)
+        metrics["response_sample_count"] = count + 1
+        if not incident["sla_recorded"]:
+            metrics["sla_met_count" if response <= 7 else "sla_missed_count"] += 1
+            incident["sla_recorded"] = True
+
     def _advance_unit(self, unit):
         if is_unit_available(unit):
             return
         phase = unit["phases"][0]
         incident = self.state["active_incidents"].get(unit["assigned_cam"])
-        if phase["status"] == "DEPLETED_ON_SCENE" and phase["remaining"] == 1 and incident and (incident["severity"] >= 4 if unit["agency"] == "POLICE" else incident["severity"] > 1):
+        holding_flood = (incident and incident.get("progression_model") == "park_square_flood_v1"
+                         and incident["status"] != "RESOLVED")
+        if phase["status"] == "DEPLETED_ON_SCENE" and phase["remaining"] == 1 and incident and (holding_flood or (incident["severity"] >= 4 if unit["agency"] == "POLICE" else incident["severity"] > 1)):
             # Hazard escalation/cordon clearance can extend the nominal round-trip estimate.
             phase["remaining"] += 1
             unit["on_scene_ticks"] += 1
@@ -337,15 +462,8 @@ class SheffieldSim:
         if phase["remaining"] == 0:
             completed = unit["phases"].pop(0)
             if completed["status"] == "DEPLETED_EN_ROUTE" and incident and incident["response_ticks"] is None:
-                response = self.state["tick"] - incident["spawn_tick"]
-                incident["response_ticks"] = response
-                metrics = self.state["effectiveness_metrics"]
-                count = metrics.get("response_sample_count", 0)
-                metrics["avg_response_ticks"] = (metrics["avg_response_ticks"] * count + response)/(count+1)
-                metrics["response_sample_count"] = count + 1
-                if not incident["sla_recorded"]:
-                    metrics["sla_met_count" if response <= 7 else "sla_missed_count"] += 1
-                    incident["sla_recorded"] = True
+                if incident.get("progression_model") != "park_square_flood_v1":
+                    self._record_response(incident)
             unit["status"] = unit["phases"][0]["status"] if unit["phases"] else "AVAILABLE"
             if not unit["phases"]:
                 home = EMERGENCY_HUBS[unit["home_hub"]]
@@ -363,8 +481,13 @@ class SheffieldSim:
                 self.state["effectiveness_metrics"]["sla_missed_count"] += 1
                 incident["sla_recorded"] = True
             on_scene = any(u["assigned_cam"] == cam_id and u["status"] == "DEPLETED_ON_SCENE" for u in self.state["resource_db"].values())
-            incident["severity"] = max(1, incident["severity"] - 1) if on_scene else min(10, incident["severity"] + (self.state["tick"] % 3 == 0))
-            if incident["severity"] == 1 and on_scene:
+            staged = incident.get("progression_model") == "park_square_flood_v1"
+            if staged:
+                self._update_flood(cam_id, incident)
+            else:
+                incident["severity"] = max(1, incident["severity"] - 1) if on_scene else min(10, incident["severity"] + (self.state["tick"] % 3 == 0))
+            cleared = incident["water_level"] == 0 if staged else incident["severity"] == 1
+            if cleared and on_scene:
                 incident["status"] = "RESOLVED"
                 metrics = self.state["effectiveness_metrics"]
                 metrics["incidents_resolved"] += 1
@@ -397,12 +520,83 @@ class SheffieldSim:
                 self.state["active_incidents"][cam] = make_incident(cam, hazard, self.rng.randint(4, 8), self.state["tick"], self.rng.choice([True, False]))
 
 
+def park_square_cosmos_manifest(reference_frame=None):
+    """Reviewable local-asset specification; performs no model/API calls.
+
+    Prompts should be adapted to the actual available Cosmos runtime. A verified
+    Park Square reference and consistent viewpoint are prerequisites to generation.
+    """
+    descriptions = {
+        "POOLING": "Shallow rainwater pooling near road drains; road still passable; no trapped occupants.",
+        "ROAD_FLOODED": "Standing floodwater covers the approach road; traffic stopped before the water; no vehicle driving through it.",
+        "VEHICLES_TRAPPED": "Floodwater surrounds a stationary car with visible occupants awaiting rescue; no graphic injuries; road impassable.",
+        "CLEARED": "Floodwater has receded; wet road surface and residual puddles; the formerly trapped car is stationary on dry ground.",
+    }
+    common = ("Synthetic emergency-training CCTV of Park Square, Sheffield. Use the supplied reference "
+              "for road geometry, buildings and a fixed elevated viewpoint. Keep camera position, weather, "
+              "lighting, road layout and vehicle identities consistent across stages. Locked-off camera, "
+              "overcast daylight, natural motion, no camera movement, no captions, no logos or UI. ")
+    return {"camera_id": "CAM_08", "reference_frame": str(reference_frame) if reference_frame else None,
+            "reference_status": "LOCAL_UNVERIFIED" if reference_frame and Path(reference_frame).is_file() else "REQUIRED",
+            "generation_status": "NOT_GENERATED", "duration_seconds_requested": 8,
+            "aspect_ratio_requested": "16:9", "seed_requested": 42,
+            "notes": ["Runtime-specific options/model tags must be confirmed before generation",
+                      "These are synthetic stage observations, not verified real CCTV or flood predictions",
+                      "Generate all stages from the same verified reference; visually inspect consistency",
+                      "Do not reuse a clip from another stage when an asset is missing"],
+            "stages": [{"stage": stage, "prompt": common + description,
+                        "clip_path": f"assets/hero_cams_disaster/CAM_08_flood_{stage}.mp4",
+                        "frame_path": f"assets/hero_cams_disaster/CAM_08_flood_{stage}.jpg"}
+                       for stage, description in descriptions.items()]}
+
+
+def run_park_square_flood_demo(graph=None, response_delay=0, ticks=60):
+    """Reproducible world-model probe with an explicit scripted response.
+
+    This tests physics; it is not an AI benchmark. Tick rates, work and staging
+    assumptions are game rules. No Cosmos inference/generation is performed.
+    """
+    if type(response_delay) is not int or response_delay < 0 or type(ticks) is not int or ticks < 1:
+        raise ValueError("Response delay must be nonnegative and ticks positive")
+    sim = SheffieldSim(graph=graph)
+    incident = sim.start_park_square_flood()
+    trace = []
+    for _ in range(ticks):
+        if sim.state["tick"] == response_delay:
+            sim.dispatch("CAM_08", ["FIRE_1", "POL_2"], controller="HUMAN")
+        sim.tick(spawn=False)
+        trace.append({"tick": sim.state["tick"], "stage": incident["stage"],
+                      "severity": incident["severity"], "water_level": incident["water_level"],
+                      "road_blocked": incident["road_blocked"], "status": incident["status"],
+                      "control_state": incident["control_state"],
+                      "unit_status": {key: sim.state["resource_db"][key]["status"] for key in ("FIRE_1", "POL_2")}})
+    return {"routing": sim.state["routing"], "response_delay_ticks": response_delay,
+            "staging": incident["staging_location"], "stage_history": incident["stage_history"],
+            "effectiveness_metrics": sim.state["effectiveness_metrics"],
+            "visual_observation": incident["visual_observation"], "trace": trace}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ticks", type=int, default=5)
     parser.add_argument("--download-osm", action="store_true")
+    parser.add_argument("--cosmos-manifest", action="store_true", help="Print the four stage clip specifications; does not generate video")
+    parser.add_argument("--cosmos-reference", type=Path, help="Local Park Square reference frame for the manifest")
+    parser.add_argument("--flood-demo", action="store_true", help="Run staged Park Square flood with scripted Fire/Police response")
+    parser.add_argument("--response-delay", type=int, default=0, help="Dispatch delay in ticks for --flood-demo")
     parser.add_argument("--road-report", type=Path, help="Write real-OSM camera/station and round-trip verification JSON")
     args = parser.parse_args()
+    if args.cosmos_manifest:
+        print(json.dumps(park_square_cosmos_manifest(args.cosmos_reference), indent=2))
+        raise SystemExit(0)
+    if args.ticks < 0 or args.response_delay < 0:
+        parser.error("Ticks and response delay must be nonnegative")
+    if args.flood_demo:
+        if args.ticks < 1 or args.road_report:
+            parser.error("--flood-demo requires positive --ticks and cannot combine with --road-report")
+        graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
+        print(json.dumps(run_park_square_flood_demo(graph, args.response_delay, args.ticks), indent=2))
+        raise SystemExit(0)
     if args.road_report:
         graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
         sim = SheffieldSim(graph=graph, seed=42, demo=True)
