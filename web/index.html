@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SURU Shared Command</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<link href="style.css" rel="stylesheet">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><strong>SURU</strong><span>Sheffield Urban Response Unit – simulation</span></div>
+  <div class="clock"><span class="patch" id="tick">Tick 0</span><span class="hint">1 tick = 1 minute</span></div>
+  <div class="controls">
+    <span class="conn" id="conn" role="status">Not connected</span>
+    <label class="switch"><input type="checkbox" id="live"> Live models</label>
+    <button class="btn" id="retry" type="button">Retry negotiations</button>
+    <button class="btn" id="reset" type="button">Reset scenario</button>
+    <button class="btn primary" id="advance" type="button">Advance tick</button>
+  </div>
+</header>
+
+<section class="gantry" id="gantry" aria-label="City performance"></section>
+
+<main class="wall">
+  <aside class="rail" aria-label="Incidents">
+    <h2 class="rail-head">Incidents <span id="inc-count"></span></h2>
+    <div id="incidents"></div>
+  </aside>
+  <div class="mapwrap">
+    <div id="map" role="img" aria-label="Map of Sheffield with stations, incidents and unit routes"></div>
+    <p class="map-note" id="graph-note"></p>
+    <fieldset class="layers">
+      <legend>Map layers</legend>
+      <label><input type="checkbox" data-layer="roads" checked> Road graph</label>
+      <label><input type="checkbox" data-layer="routes" checked> Unit routes</label>
+      <label><input type="checkbox" data-layer="stations" checked> Stations</label>
+      <label><input type="checkbox" data-layer="units" checked> Units moving</label>
+    </fieldset>
+    <ul class="legend">
+      <li><i class="k-station"></i>Station with a vehicle free</li>
+      <li><i class="k-station depleted"></i>Station, no vehicle free</li>
+      <li><i class="k-incident"></i>Incident (colour = severity)</li>
+      <li><i class="k-unit"></i>Unit away from base</li>
+      <li><i class="k-route"></i>Active route</li>
+    </ul>
+  </div>
+</main>
+
+<section class="details">
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="cams">Cameras and triage</button>
+    <button role="tab" aria-selected="false" data-tab="board">Message board</button>
+    <button role="tab" aria-selected="false" data-tab="units">Resources and depletion</button>
+    <button role="tab" aria-selected="false" data-tab="rules">Data and rules</button>
+  </div>
+  <div class="tabpanel" id="tab-cams" role="tabpanel"></div>
+  <div class="tabpanel" id="tab-board" role="tabpanel" hidden></div>
+  <div class="tabpanel" id="tab-units" role="tabpanel" hidden></div>
+  <div class="tabpanel" id="tab-rules" role="tabpanel" hidden></div>
+</section>
+
+<dialog id="connect">
+  <form id="connect-form" method="dialog">
+    <h2>Connect to the SURU backend</h2>
+    <p>Run <code>python web_api.py</code> on the demo host and expose it over HTTPS (for example with a Cloudflare tunnel). Paste that address here.</p>
+    <label for="api-url">Backend address</label>
+    <input id="api-url" type="url" placeholder="https://example.trycloudflare.com" required>
+    <p class="error" id="connect-error" role="alert"></p>
+    <button class="btn primary" type="submit">Connect</button>
+  </form>
+</dialog>
+
+<dialog id="highway" aria-labelledby="hw-title">
+  <div class="hw-head">
+    <div><h2 id="hw-title">Mediation highway</h2><p id="hw-sub"></p></div>
+    <label class="hw-round" id="hw-round-wrap">Decision tick <select id="hw-round"></select></label>
+    <button class="btn" type="button" id="hw-close">Close</button>
+  </div>
+  <div class="hw-canvas"><svg id="hw-svg" viewBox="0 0 1120 430" role="group" aria-label="Agent interactions"></svg></div>
+  <div class="hw-detail" id="hw-detail" aria-live="polite">Select a line to read that exchange.</div>
+  <ul class="hw-legend">
+    <li><i class="l-pending"></i>Message passed</li>
+    <li><i class="l-agreed"></i>Agreed or binding</li>
+    <li><i class="l-deadlock"></i>Deadlock or timeout</li>
+    <li><i class="l-deferred"></i>Deferred</li>
+    <li><i class="l-idle"></i>Not woken or not active</li>
+  </ul>
+  <div class="table-wrap"><table class="data" id="hw-table"></table></div>
+  <p class="fine">Simulated agent output for a hackathon demo. Not operational advice.</p>
+</dialog>
+
+<script src="config.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
