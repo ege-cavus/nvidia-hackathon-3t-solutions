@@ -1,0 +1,25 @@
+{
+  "source": "https://www.syfire.gov.uk/performance",
+  "publisher": "South Yorkshire Fire and Rescue Service",
+  "reviewed_on": "2026-11-13",
+  "reporting_period": "2023/24",
+  "plan_period_named_on_page": "2021-2024",
+  "provenance": "PUBLISHED_HISTORICAL_RESPONSE_REFERENCE_NOT_A_CURRENT_DISPATCH_POLICY",
+  "measurement_scope": "Time from call received on station to appliance arrival: turnout plus travel. Call handling is monitored separately.",
+  "target_seconds_by_community_and_incident_risk": {
+    "HIGH": {"HIGH": 420, "MEDIUM": 540, "LOW": 660},
+    "MEDIUM": {"HIGH": 540, "MEDIUM": 660, "LOW": 780},
+    "LOW": {"HIGH": 660, "MEDIUM": 780, "LOW": 900}
+  },
+  "reported_service_statistics": {
+    "response_standard_achievement_percent": 87,
+    "average_response_seconds_all_incidents_and_risks": 460
+  },
+  "limits": [
+    "Targets and reported averages are different quantities.",
+    "Community risk and incident category risk are separate classifications; no Sheffield node classifications have been verified here.",
+    "Do not map Qwen severity directly onto these risk categories without an explicit policy.",
+    "This page does not establish vehicle quantities, containment work, scene duration, spread rates, return time or restock/handover duration.",
+    "A graph travel-only ETA cannot establish achievement of a turnout-plus-travel standard."
+  ]
+}

@@ -78,6 +78,89 @@ class ReportWorldTests(unittest.TestCase):
         self.assertFalse(metrics["resolution_success"])
         self.assertEqual(metrics["effective_work_ticks"],0)
 
+    def test_partial_response_delays_spread_without_resolving(self):
+        w=self.world()
+        w.dispatch("CAM_01",["FIRE_1"])
+        w.tick()
+        self.assertEqual(w._spread_progress["station-fire-secondary-node"],1)
+        self.assertEqual(w.evaluate_response("CAM_01")["response_state"],"NONE")
+        for _ in range(9):w.tick()
+        self.assertEqual(len(w.reports),4)
+        metrics=w.evaluate_response("CAM_01")
+        self.assertEqual(metrics["response_state"],"PARTIAL")
+        self.assertEqual(metrics["effective_work_ticks"],0)
+        self.assertEqual(w.state["active_incidents"]["CAM_01"]["severity"],5)
+        self.assertFalse(metrics["containment_success"])
+        w.tick()
+        self.assertEqual(w.reports[-1]["received_at"],"2026-11-13T09:11:00Z")
+        self.assertEqual(w.spread_events[0]["spread_rate_multiplier"],0.5)
+        self.assertEqual(w.spread_events[0]["parent_incident_id"],20261113000001)
+        self.assertEqual(w.state["resource_db"]["FIRE_1"]["status"],"DEPLETED_ON_SCENE")
+        self.assertTrue(any(e["success_metrics"]["response_state"]=="PARTIAL" for e in w.response_events))
+        for _ in range(4):w.tick()
+        self.assertEqual(len(w.reports),5)
+
+    def test_non_mitigating_agency_does_not_slow_fire(self):
+        w=self.world()
+        w.dispatch("CAM_01",["POL_1"])
+        for _ in range(6):w.tick()
+        self.assertEqual(w.evaluate_response("CAM_01")["response_state"],"PARTIAL")
+        self.assertEqual(w.reports[-1]["received_at"],"2026-11-13T09:06:00Z")
+        self.assertEqual(w.spread_events[0]["spread_rate_multiplier"],1)
+
+    def test_late_partial_response_does_not_reset_spread_clock(self):
+        w=self.world()
+        for _ in range(4):w.tick()
+        w.dispatch("CAM_01",["FIRE_1"])
+        w.tick();w.tick()
+        self.assertEqual(len(w.reports),4)
+        w.tick()
+        self.assertEqual(w.reports[-1]["received_at"],"2026-11-13T09:07:00Z")
+
+    def test_reinforcement_can_contain_before_delayed_spread(self):
+        w=self.world()
+        w.dispatch("CAM_01",["FIRE_1"])
+        for _ in range(6):w.tick()
+        w.dispatch("CAM_01",["POL_1"])
+        for _ in range(14):w.tick()
+        self.assertEqual(len(w.reports),4)
+        self.assertEqual(w.spread_events[0]["outcome"],"PREVENTED")
+        self.assertEqual(w.state["active_incidents"]["CAM_01"]["status"],"RESOLVED")
+        self.assertEqual(w.state["resource_db"]["FIRE_1"]["status"],"AVAILABLE")
+        self.assertEqual(w.state["resource_db"]["POL_1"]["status"],"AVAILABLE")
+
+    def test_extra_units_do_not_improve_work_or_spread_reduction(self):
+        normal,extra=self.world(),self.world()
+        normal.dispatch("CAM_01",["FIRE_1","POL_1"])
+        extra.dispatch("CAM_01",["FIRE_1","FIRE_2","POL_1"])
+        for _ in range(12):
+            normal.tick();extra.tick()
+            for field in ("severity","status"):
+                self.assertEqual(normal.state["active_incidents"]["CAM_01"][field],extra.state["active_incidents"]["CAM_01"][field])
+            self.assertEqual(normal._work,extra._work)
+            self.assertEqual(normal._spread_progress,extra._spread_progress)
+        self.assertEqual(normal.spread_events,extra.spread_events)
+
+    def test_partial_spread_multiplier_is_configurable_and_nonzero(self):
+        scenario=json.loads(DEFAULT_SCENARIO.read_text())
+        scenario["schema"]=str((DEFAULT_SCENARIO.parent/scenario["schema"]).resolve())
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"scenario.json"
+            rule=scenario["spread_rules"][0]
+            rule["partial_response_spread_multiplier"]=0.25
+            path.write_text(json.dumps(scenario))
+            w=ReportDrivenWorld(path,graph=self.graph)
+            w.dispatch("CAM_01",["FIRE_1"])
+            for _ in range(20):w.tick()
+            self.assertEqual(len(w.reports),4)
+            w.tick()
+            self.assertEqual(w.reports[-1]["received_at"],"2026-11-13T09:21:00Z")
+            for invalid in (0,1,True,-0.5,"0.5"):
+                rule["partial_response_spread_multiplier"]=invalid
+                path.write_text(json.dumps(scenario))
+                with self.subTest(multiplier=invalid),self.assertRaises(ValueError):
+                    ReportDrivenWorld(path,graph=self.graph)
+
     def test_duplicate_reports_are_inert(self):
         w=self.world();before=deepcopy(w.state)
         with self.assertRaises(ValueError):w.ingest_report(w.reports[0],"CAM_01")

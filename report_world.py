@@ -7,10 +7,12 @@ import argparse
 from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 import json
 from pathlib import Path
 import networkx as nx
 from jsonschema import Draft202012Validator, FormatChecker
+from response_benchmarks import fire_response_reference
 from sheffield_sim import SheffieldSim, effectiveness_score_breakdown, load_sheffield_graph
 from state_schema import DispatchCommand, HERO_CAMERAS, is_unit_available, make_incident
 
@@ -35,12 +37,20 @@ class ReportDrivenWorld(SheffieldSim):
                 raise ValueError("Invalid required unit counts")
             if not 1 <= policy["containment_work_ticks"] <= policy["resolution_work_ticks"]:
                 raise ValueError("Invalid response work thresholds")
+            reference = policy.get("fire_response_reference", {})
+            fire_response_reference(reference.get("community_risk"), reference.get("incident_category_risk"))
         rules = self.scenario["spread_rules"]
         if len({r["rule_id"] for r in rules}) != len(rules):
             raise ValueError("Duplicate spread rule IDs")
         for rule in rules:
             if type(rule["delay_ticks"]) is not int or rule["delay_ticks"] < 1 or any(rule[k] not in self.scenario["nodes"] for k in ("source_node", "target_node")):
                 raise ValueError("Invalid authored spread link")
+            multiplier = rule.get("partial_response_spread_multiplier", 0.5)
+            if type(multiplier) not in (int, float) or not 0 < multiplier < 1:
+                raise ValueError("Partial response spread multiplier must be between zero and one")
+            mitigating = rule.get("mitigating_agencies", list(self.scenario["nodes"][rule["source_node"]]["required_units"]))
+            if not isinstance(mitigating, list) or not mitigating or any(a not in ("FIRE", "POLICE", "AMBULANCE") for a in mitigating):
+                raise ValueError("Spread mitigation requires known agencies")
         if graph is None:
             graph, _ = load_sheffield_graph(strict=True)
         super().__init__(graph=graph)
@@ -50,6 +60,7 @@ class ReportDrivenWorld(SheffieldSim):
         self._received_follow_ups = set()
         self._reports_by_id, self._observations, self._work, self._contained = {}, {}, {}, set()
         self._finished_rules, self._ingested_initial = set(), set()
+        self._spread_progress = {rule["rule_id"]: Fraction(0) for rule in rules}
         self.state["world_mode"] = "AUTHORED_REPORTS"
         self._receive_due_initial()
         self._receive_due_follow_ups()
@@ -185,8 +196,8 @@ class ReportDrivenWorld(SheffieldSim):
         proposed = Counter(self.state["resource_db"][k]["agency"] for k in unit_ids)
         if incident["status"] == "UNITS_DISPATCHED" and not any(committed[a] < count and proposed[a] for a,count in required.items()):
             return False, "No missing capability to reinforce"
-        if any(committed[a]+proposed[a] < count for a,count in required.items()):
-            return False, "Missing required response capability"
+        if not any(proposed[a] for a in required):
+            return False, "Allocation supplies no relevant response capability"
         try:
             for k in unit_ids:self.estimate_depletion_ticks(k,cam_id,incident["severity"])
         except (nx.NetworkXNoPath,nx.NodeNotFound):
@@ -199,18 +210,29 @@ class ReportDrivenWorld(SheffieldSim):
         counts = Counter(u["agency"] for u in self.state["resource_db"].values() if u["assigned_cam"] == node_id and u["status"] == "DEPLETED_ON_SCENE")
         effective = all(counts[a]>=n for a,n in policy["required_units"].items())
         work = self._work[incident["incident_id"]]
-        return {"capability_coverage":effective, "effective_work_ticks":work,
+        metrics = {"capability_coverage":effective, "on_scene_units":dict(counts),
+                "response_state":"SUFFICIENT" if effective else "PARTIAL" if any(counts[a] for a in policy["required_units"]) else "NONE",
+                "effective_work_ticks":work,
                 "containment_success":work>=policy["containment_work_ticks"],
                 "resolution_success":work>=policy["resolution_work_ticks"]}
+        if "FIRE" in policy["required_units"]:
+            reference = policy.get("fire_response_reference", {})
+            metrics["fire_response_reference"] = fire_response_reference(
+                reference.get("community_risk"), reference.get("incident_category_risk"))
+        return metrics
 
     def _apply_observed_response(self, node_id, incident):
         metrics = self.evaluate_response(node_id)
+        before = incident["severity"]
         if not metrics["capability_coverage"]:
+            if metrics["response_state"] == "PARTIAL":
+                self.response_events.append({"tick":self.state["tick"], "incident_id":incident["incident_id"],
+                                             "success_metrics":metrics, "severity_before":before,
+                                             "severity_after":before, "world_status":incident["status"]})
             return
         self._record_response(incident)
         self._work[incident["incident_id"]] += 1
         metrics = self.evaluate_response(node_id)
-        before = incident["severity"]
         incident["severity"] = max(1, self.scenario["nodes"][node_id]["severity"]-metrics["effective_work_ticks"])
         if metrics["containment_success"]:self._contained.add(incident["incident_id"])
         if metrics["resolution_success"]:
@@ -223,17 +245,32 @@ class ReportDrivenWorld(SheffieldSim):
                                      "success_metrics":metrics, "severity_before":before,
                                      "severity_after":incident["severity"], "world_status":incident["status"]})
 
+    def _spread_rate(self, rule, source):
+        if source["incident_id"] in self._contained or source["status"] == "RESOLVED" or source["severity"] < rule["minimum_severity"]:
+            return Fraction(0)
+        counts = self.evaluate_response(rule["source_node"])["on_scene_units"]
+        mitigating = rule.get("mitigating_agencies", list(self.scenario["nodes"][rule["source_node"]]["required_units"]))
+        # Presence on scene matters; units travelling/returning do not slow spread.
+        # One or many suitable units get the same capped benefit until contained.
+        if any(counts.get(agency, 0) for agency in mitigating):
+            return Fraction(str(rule.get("partial_response_spread_multiplier", 0.5)))
+        return Fraction(1)
+
     def _spread(self):
         for rule in self.scenario["spread_rules"]:
             if rule["rule_id"] in self._finished_rules:continue
             source = self.state["active_incidents"].get(rule["source_node"])
-            if source is None or self.state["tick"] < source["spawn_tick"]+rule["delay_ticks"]:continue
+            if source is None or self.state["tick"] <= source["spawn_tick"]:continue
             target = self.state["active_incidents"].get(rule["target_node"])
-            if source["incident_id"] in self._contained or source["status"] == "RESOLVED" or source["severity"] < rule["minimum_severity"] :
+            rate = self._spread_rate(rule, source)
+            if rate == 0:
+                if self.state["tick"] < source["spawn_tick"]+rule["delay_ticks"]:continue
                 self.spread_events.append({"tick":self.state["tick"],"rule_id":rule["rule_id"],"outcome":"PREVENTED"})
                 self.state["effectiveness_metrics"]["spillovers_prevented"] += 1
                 self._finished_rules.add(rule["rule_id"])
                 continue
+            self._spread_progress[rule["rule_id"]] += rate
+            if self._spread_progress[rule["rule_id"]] < rule["delay_ticks"]:continue
             if target and target["status"] != "RESOLVED":
                 self.spread_events.append({"tick":self.state["tick"],"rule_id":rule["rule_id"],"outcome":"SKIPPED_ALREADY_AFFECTED"})
                 self._finished_rules.add(rule["rule_id"])
@@ -248,6 +285,8 @@ class ReportDrivenWorld(SheffieldSim):
             self._finished_rules.add(rule["rule_id"])
             self.state["effectiveness_metrics"]["spillovers_occurred"] += 1
             self.spread_events.append({"tick":self.state["tick"],"rule_id":rule["rule_id"],"outcome":"SPREAD",
+                                       "spread_rate_multiplier":float(rate),
+                                       "spread_progress":float(self._spread_progress[rule["rule_id"]]),
                                        "parent_incident_id":source["incident_id"],"incident_id":report["incident_id"],"node_id":rule["target_node"]})
 
     def tick(self, spawn=False):
@@ -283,6 +322,9 @@ class ReportDrivenWorld(SheffieldSim):
         (directory/"follow_up_reports.json").write_text(json.dumps(self.follow_up_reports,indent=2)+"\n",encoding="utf-8")
         (directory/"follow_up_observations.json").write_text(json.dumps(follow_up_observations,indent=2)+"\n",encoding="utf-8")
         result = {"follow_up_reports":len(self.follow_up_reports),"tick":self.state["tick"],"reports":len(self.reports),"spread_events":self.spread_events,
+                  "spread_progress":[{"rule_id":r["rule_id"],"progress_ticks":float(self._spread_progress[r["rule_id"]]),
+                                      "baseline_delay_ticks":r["delay_ticks"],"finished":r["rule_id"] in self._finished_rules}
+                                     for r in self.scenario["spread_rules"]],
                   "response_events":self.response_events,"score_breakdown":effectiveness_score_breakdown(self.state["effectiveness_metrics"])}
         (directory/"world_events.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
         return result
@@ -291,15 +333,17 @@ class ReportDrivenWorld(SheffieldSim):
 def scripted_response(world):
     """Oracle smoke-test script uses evaluator requirements; never AI benchmark evidence."""
     for node,incident in list(world.state["active_incidents"].items()):
-        if incident["status"] in ("RESOLVED","UNITS_DISPATCHED"):continue
+        if incident["status"] == "RESOLVED":continue
         selected=[]
+        committed=Counter(u["agency"] for u in world.state["resource_db"].values()
+                          if u["assigned_cam"] == node and u["status"] in ("DEPLETED_EN_ROUTE","DEPLETED_ON_SCENE"))
         for agency,count in world.scenario["nodes"][node]["required_units"].items():
             available=[]
             for k,u in world.state["resource_db"].items():
                 if u["agency"]==agency and is_unit_available(u):
                     try:available.append((world.estimate_depletion_ticks(k,node,incident["severity"])["total_depletion_ticks_remaining"],k))
                     except (nx.NetworkXNoPath,nx.NodeNotFound):pass
-            selected.extend(k for _,k in sorted(available)[:count])
+            selected.extend(k for _,k in sorted(available)[:max(0,count-committed[agency])])
         if selected:
             world.apply_command(DispatchCommand(node,tuple(selected),world.state["tick"],"AGENTS"))
 

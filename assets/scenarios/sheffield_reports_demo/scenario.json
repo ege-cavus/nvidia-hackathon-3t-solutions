@@ -235,6 +235,8 @@
       "source_node": "CAM_01",
       "target_node": "OSM_1952229758",
       "delay_ticks": 6,
+      "partial_response_spread_multiplier": 0.5,
+      "mitigating_agencies": ["FIRE"],
       "minimum_severity": 4,
       "report_template": {
         "channel": "alarm",
@@ -263,6 +265,7 @@
   ],
   "notes": [
     "Spread is an authored directed demo rule, not physical propagation inferred from a road graph.",
+    "Suitable on-scene resources slow uncontained spread to half speed; extra units give no additional speed or work bonus. Partial responses do not reduce severity or accumulate resolution work.",
     "World evaluation configuration must not be included in the Qwen observation.",
     "No automatic random incident spawning or legacy intensity escalation in the report-driven runner."
   ]

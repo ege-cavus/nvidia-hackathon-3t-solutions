@@ -15,4 +15,4 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["state_schema", "cosmos_client", "cosmos_reference", "report_world", "game_session", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]
+py-modules = ["state_schema", "cosmos_client", "cosmos_reference", "response_benchmarks", "report_world", "game_session", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]

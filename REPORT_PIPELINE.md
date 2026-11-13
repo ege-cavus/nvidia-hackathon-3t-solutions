@@ -50,13 +50,17 @@ synthetic streets locally and need no network.
    rules, required unit counts and success thresholds out of this payload.
 3. Submit human/agent decisions through the existing DispatchCommand boundary.
    Duplicate/invalid/unavailable allocations are rejected; routes and turnaround
-   use the graph. An authored closure uses provisional staging where supported.
+   use the graph. Partial relevant allocations are allowed so shortages can have
+   an observed outcome and later reinforcements can complete the capability set.
+   An authored closure uses provisional staging where supported.
 4. Each tick, evaluate observed on-scene capability and accumulated effective work.
    Success metrics produce response_events, reduce world severity, mark containment
    and eventually resolution, and reopen scenario-owned roads when resolved.
-5. At a spread link's due time, evaluate the authored conditions after that tick's
-   response work. Effective containment suppresses it. Otherwise create one report
-   at the target node, using that tick's received_at, and record a parent/child link.
+5. Accumulate each spread link's progress after that tick's response work. Without
+   suitable resources it advances one unit per minute; suitable on-scene resources
+   multiply that rate by partial_response_spread_multiplier (default 0.5).
+   Containment stops it. At delay_ticks units of progress, emit one new report at
+   the target node with that tick's received_at and a separate parent/child link.
 
 Road connectivity alone does not predict building-to-building fire spread. This
 example's secondary ignition is an authored nearby graph-node event. No stochastic
@@ -65,12 +69,70 @@ of effective work for containment and five for resolution; these are game rules.
 Success metrics are computed from world observations, never accepted blindly from
 an LLM's self-assessment. World scoring remains version effectiveness-v2.
 
+## Agreed resource-effect policy
+
+All three Nemotron service roles assess the incident concurrently and send their
+proposals to the allocator. This is the agreed integration direction; the legacy
+agent adapter's selective wake-up behaviour has not been changed by this runner.
+
+- An insufficient response cannot reduce severity, accrue resolution work or
+  claim containment/resolution. Suitable resources can still slow authored spread.
+- Each spread rule lists mitigating_agencies. The station-fire rule lists FIRE:
+  police alone do not suppress fire spread. En-route, returning and cooling-down
+  units do not mitigate it either.
+- Half-speed spread is a configurable game assumption, not a measured fire rate.
+  Progress accumulated before arrival is retained. A late response does not reset
+  the spread clock. In the synthetic street fixture, no response spreads at tick6;
+  FIRE arriving at tick2 without Police delays it to tick11, with severity unchanged.
+- Enough on-scene capabilities enable fixed-rate work. Extra units add no work,
+  spread-reduction or success-score bonus, while those vehicles remain committed.
+  Further dispatch can reinforce a missing capability. Resources still complete
+  the full return/hospital/cooldown lifecycle after resolution.
+- response_events expose NONE/PARTIAL/SUFFICIENT coverage and work results;
+  exported spread_progress shows the accumulated clock. Evaluator configuration
+  remains outside the pre-dispatch Qwen observation and caller JSON.
+
+One tick remains one simulated minute. Accelerating playback must advance those
+same ticks; model latency and Cosmos rendering must not independently change time.
+Numeric incident-specific work and cooldown durations remain demo placeholders.
+
+## SYFR response-time reference
+
+The user-supplied [SYFR performance page](https://www.syfire.gov.uk/performance)
+publishes this historical target matrix, alongside 2023/24 results. Rows are
+community risk; columns are incident category risk. Values are minutes:
+
+| Community risk | High incident risk | Medium incident risk | Low incident risk |
+| --- | --- | --- | --- |
+| High | 7 | 9 | 11 |
+| Medium | 9 | 11 | 13 |
+| Low | 11 | 13 | 15 |
+
+data/reference/syfr_response_standards_2023_24.json records the values, reporting
+period, source and interpretation limits. response_benchmarks.py makes them
+available in post-response FIRE metrics. Optional per-node fire_response_reference
+specifies community_risk and incident_category_risk (HIGH/MEDIUM/LOW). Neither is
+inferred from Qwen severity or camera location. Existing nodes remain UNASSIGNED
+with no invented target until their classifications are agreed.
+
+The page measures station notification to appliance arrival: turnout plus travel;
+call handling is monitored separately. Travel-only graph timing cannot establish
+compliance, so the reference reports NOT_ASSESSED. The legacy seven-tick game SLA
+is unchanged and is not asserted to be this SYFR standard. The published 87%
+achievement and 7m40s average concern 2023/24; they are not guarantees or asserted
+current performance. These data supply no scene-work, restock or handover duration
+and do not prove that sending a particular number of vehicles resolves an incident.
+
 ## Integration handoffs
 
 Track 2 should wake Qwen once per new report ID and use qwen_observation, adding
 only its permitted live resource view. Current legacy process_pending does not
 consume this runner automatically. Never send the full scenario/evaluation file
 as model input or reuse a stale frame for a different node/report.
+The partner's canonical incident/response example is docs/INCIDENT_RESPONSE_JSON.md
+on the docs/incident-response-json branch. Use validated actual allocations for
+world effects, not requested_total, manifest quantities or evaluation.verdict.
+The examples abbreviate lists to one item and are not complete dispatch fixtures.
 Track 3 should show report times, causal links, response success events and image
 placeholders. Track 4 owns future profile/schema consolidation and licensed media.
 Only one open incident per node is supported; re-ingestion waits for its previous
