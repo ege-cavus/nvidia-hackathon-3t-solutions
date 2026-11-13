@@ -24,6 +24,25 @@ from state_schema import DispatchCommand, EMERGENCY_HUBS, HERO_CAMERAS, get_init
 SCORING_VERSION = "effectiveness-v2"
 
 
+# Prototype game profiles live on the Track 1 lease until Track 4 extracts/version
+# them in knowledge_base.py. Rates are normalized game rules, not clinical models.
+INCIDENT_PROFILES = {
+    "building_fire": {"hazard": "fire", "stages": ("SMOKE", "ESTABLISHED_FIRE", "SPREADING_FIRE"),
+                      "terminal": "CLEARED", "primary_agency": "FIRE", "growth": 0.75,
+                      "closure_from_stage": 1},
+    "road_collision": {"hazard": "trauma", "stages": ("OBSTRUCTION", "INJURED_CASUALTIES", "CRITICAL_CASUALTIES"),
+                      "terminal": "CLEARED", "primary_agency": "AMBULANCE", "growth": 0.4,
+                      "closure_from_stage": 0},
+    "medical_emergency": {"hazard": "trauma", "stages": ("URGENT", "LIFE_THREATENING", "CRITICAL_DELAY"),
+                          "terminal": "STABILISED", "primary_agency": "AMBULANCE", "growth": 0.6,
+                          "closure_from_stage": None},
+}
+
+
+def is_progressive_incident(incident):
+    return incident.get("progression_model") in ("park_square_flood_v1", "incident_profiles_v1")
+
+
 def effectiveness_score_breakdown(metrics):
     """Versioned game costs, not operational estimates of lives or monetary loss.
 
@@ -226,11 +245,15 @@ class SheffieldSim:
                 "safety_status": "SIMULATION_STANDOFF_UNVERIFIED", "excluded_edges": threatened}
 
     def start_park_square_flood(self):
+        return self.start_flood("CAM_08")
+
+    def start_flood(self, cam_id):
         """Opt-in three-stage demo. Generic incident behaviour remains unchanged."""
-        cam_id = "CAM_08"
+        if cam_id not in HERO_CAMERAS:
+            raise ValueError("Unknown camera")
         previous = self.state["active_incidents"].get(cam_id)
         if previous and previous["status"] != "RESOLVED":
-            raise ValueError("Park Square already has an active incident")
+            raise ValueError("Camera already has an active incident")
         if any(u["assigned_cam"] == cam_id for u in self.state["resource_db"].values()):
             raise ValueError("Previous incident still holds resources")
         staging = self.select_staging_location(cam_id)
@@ -285,6 +308,86 @@ class SheffieldSim:
         committed = {u["agency"] for u in self.state["resource_db"].values()
                      if u["assigned_cam"] == cam_id and u["status"] in ("DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE")}
         incident["reinforcement_required"] = sorted(set(incident["response_requirements"]) - committed) if level else []
+
+    def start_incident_profile(self, cam_id, incident_type):
+        """Start a named, capability-aware game incident; no video model required."""
+        if incident_type == "flood":
+            return self.start_flood(cam_id)
+        if cam_id not in HERO_CAMERAS or incident_type not in INCIDENT_PROFILES:
+            raise ValueError("Unknown camera or incident profile")
+        previous = self.state["active_incidents"].get(cam_id)
+        if previous and previous["status"] != "RESOLVED":
+            raise ValueError("Camera already has an active incident")
+        if any(u["assigned_cam"] == cam_id for u in self.state["resource_db"].values()):
+            raise ValueError("Previous incident still holds resources")
+        profile = INCIDENT_PROFILES[incident_type]
+        road_hazard = profile["closure_from_stage"] is not None
+        staging = self.select_staging_location(cam_id) if road_hazard else None
+        incident = make_incident(cam_id, profile["hazard"], 3, self.state["tick"])
+        incident.update(incident_type=incident_type, progression_model="incident_profiles_v1",
+                        incident_intensity=3.0, intensity_unit="NORMALISED_0_10_GAME_SCALE",
+                        stage=profile["stages"][0], stage_elapsed_ticks=0,
+                        stage_history=[{"tick": self.state["tick"], "stage": profile["stages"][0]}],
+                        hazard_edges=staging["excluded_edges"] if staging else [],
+                        control_state="NO_EFFECTIVE_RESPONSE")
+        if staging:
+            incident["staging_location"] = staging
+        self._refresh_profile_fields(incident, 0)
+        incident["reinforcement_required"] = list(incident["response_requirements"])
+        if incident["road_blocked"]:
+            self.set_camera_road_closed(cam_id)
+        self.state["active_incidents"][cam_id] = incident
+        return incident
+
+    def _refresh_profile_fields(self, incident, stage_index):
+        profile = INCIDENT_PROFILES[incident["incident_type"]]
+        cleared = incident["incident_intensity"] == 0
+        threshold = profile["closure_from_stage"]
+        incident["road_blocked"] = not cleared and threshold is not None and stage_index >= threshold
+        required = [profile["primary_agency"]]
+        if incident["road_blocked"]:
+            required.append("POLICE")
+        incident["response_requirements"] = required
+        stem = f"assets/hero_cams_disaster/{incident['cam_id']}_{incident['incident_type']}_{incident['stage']}"
+        incident["visual_observation"] = {"camera_id": incident["cam_id"], "incident_type": incident["incident_type"],
+            "stage": incident["stage"], "clip_path": stem+".mp4", "frame_path": stem+".jpg",
+            "asset_status": "LOCAL_ASSET" if Path(stem+".mp4").is_file() else "PLACEHOLDER"}
+
+    def _update_profile(self, cam_id, incident):
+        profile = INCIDENT_PROFILES[incident["incident_type"]]
+        on_scene = {u["agency"] for u in self.state["resource_db"].values()
+                    if u["assigned_cam"] == cam_id and u["status"] == "DEPLETED_ON_SCENE"}
+        required = set(incident["response_requirements"])
+        level = incident["incident_intensity"]
+        if required <= on_scene:
+            self._record_response(incident)
+            level = max(0.0, level-1.0)
+            incident["control_state"] = "CONTROLLED"
+        elif profile["primary_agency"] in on_scene:
+            level = min(10.0, level+profile["growth"]/2)
+            incident["control_state"] = "PARTIAL_RESPONSE"
+        else:
+            level = min(10.0, level+profile["growth"])
+            incident["control_state"] = "NO_EFFECTIVE_RESPONSE"
+        # Avoid floating-point drift at declared stage boundaries.
+        level = round(level, 6)
+        incident["incident_intensity"] = level
+        index = 0 if level <= 3 else 1 if level <= 6 else 2
+        stage = profile["terminal"] if level == 0 else profile["stages"][index]
+        if stage != incident["stage"]:
+            incident["stage"] = stage
+            incident["stage_elapsed_ticks"] = 0
+            incident["stage_history"].append({"tick": self.state["tick"], "stage": stage})
+        else:
+            incident["stage_elapsed_ticks"] += 1
+        was_blocked = incident["road_blocked"]
+        self._refresh_profile_fields(incident, index)
+        if was_blocked != incident["road_blocked"]:
+            self.set_camera_road_closed(cam_id, incident["road_blocked"])
+        incident["severity"] = max(1, min(10, math.ceil(level)))
+        committed = {u["agency"] for u in self.state["resource_db"].values()
+                     if u["assigned_cam"] == cam_id and u["status"] in ("DEPLETED_EN_ROUTE", "DEPLETED_ON_SCENE")}
+        incident["reinforcement_required"] = sorted(set(incident["response_requirements"])-committed) if level else []
 
     def road_verification_report(self):
         mappings = self.build_location_mappings()
@@ -359,7 +462,7 @@ class SheffieldSim:
         if cam_id not in self.state["active_incidents"]:
             return False, "Unknown incident"
         incident = self.state["active_incidents"][cam_id]
-        staged = incident.get("progression_model") == "park_square_flood_v1"
+        staged = is_progressive_incident(incident)
         reinforcing = incident["status"] == "UNITS_DISPATCHED" and staged
         if incident["status"] == "RESOLVED" or (incident["status"] == "UNITS_DISPATCHED" and not staged):
             return False, "Incident already dispatched or resolved"
@@ -375,17 +478,18 @@ class SheffieldSim:
         if reinforcing and not (set(incident["response_requirements"]) - {u["agency"] for u in existing}) & {u["agency"] for u in units}:
             return False, "Reinforcement must supply a missing capability"
         agencies = {u["agency"] for u in units + existing}
-        required = set(required_agencies_for_incident(incident)) | set(incident.get("response_requirements", []))
+        profiled = incident.get("progression_model") == "incident_profiles_v1"
+        required = set(incident["response_requirements"]) if profiled else set(required_agencies_for_incident(incident)) | set(incident.get("response_requirements", []))
         if not required.issubset(agencies):
             return False, "Missing required agency"
-        if (incident["road_blocked"] or (incident["severity"] >= 6 and incident["hazard"] in ("flood", "trauma"))) and "POLICE" not in agencies:
+        if (incident["road_blocked"] or (incident["severity"] >= 6 and incident["hazard"] in ("flood", "trauma") and incident.get("incident_type") != "medical_emergency")) and "POLICE" not in agencies:
             return False, "Police cordon required"
         if incident["severity"] >= 7 and incident["hazard"] in ("fire", "flood"):
             pumps = sum(u["agency"] == "FIRE" for u in units + existing)
             if pumps < 2 and not (pumps >= 1 and "POLICE" in agencies):
                 return False, "High severity rescue requires pumps or pump plus cordon"
         flood_risk = max(p["spawn_probability"] * p["hazard_weights"]["flood"] for p in self.state["node_probabilities"].values())
-        if flood_risk >= 0.05:
+        if flood_risk >= 0.05 and any(u["agency"] == "FIRE" for u in units):
             reserve = sum(u["agency"] == "FIRE" and is_unit_available(u) and key not in unit_ids
                           for key, u in self.state["resource_db"].items())
             if reserve < 1:
@@ -525,7 +629,7 @@ class SheffieldSim:
             self._sync_total(unit)
             return
         incident = self.state["active_incidents"].get(unit["assigned_cam"])
-        holding_flood = (incident and incident.get("progression_model") == "park_square_flood_v1"
+        holding_flood = (incident and is_progressive_incident(incident)
                          and incident["status"] != "RESOLVED")
         if phase["status"] == "DEPLETED_ON_SCENE" and phase["remaining"] == 1 and incident and (holding_flood or (incident["severity"] >= 4 if unit["agency"] == "POLICE" else incident["severity"] > 1)):
             # Hazard escalation/cordon clearance can extend the nominal round-trip estimate.
@@ -551,7 +655,7 @@ class SheffieldSim:
         if phase["remaining"] == 0:
             completed = unit["phases"].pop(0)
             if completed["status"] == "DEPLETED_EN_ROUTE" and incident and incident["response_ticks"] is None:
-                if incident.get("progression_model") != "park_square_flood_v1":
+                if not is_progressive_incident(incident):
                     self._record_response(incident)
             unit["status"] = unit["phases"][0]["status"] if unit["phases"] else "AVAILABLE"
             if not unit["phases"]:
@@ -572,12 +676,15 @@ class SheffieldSim:
                 self.state["effectiveness_metrics"]["sla_missed_count"] += 1
                 incident["sla_recorded"] = True
             on_scene = any(u["assigned_cam"] == cam_id and u["status"] == "DEPLETED_ON_SCENE" for u in self.state["resource_db"].values())
-            staged = incident.get("progression_model") == "park_square_flood_v1"
+            staged = is_progressive_incident(incident)
             if staged:
-                self._update_flood(cam_id, incident)
+                if incident.get("progression_model") == "park_square_flood_v1":
+                    self._update_flood(cam_id, incident)
+                else:
+                    self._update_profile(cam_id, incident)
             else:
                 incident["severity"] = max(1, incident["severity"] - 1) if on_scene else min(10, incident["severity"] + (self.state["tick"] % 3 == 0))
-            cleared = incident["water_level"] == 0 if staged else incident["severity"] == 1
+            cleared = incident.get("water_level", incident.get("incident_intensity")) == 0 if staged else incident["severity"] == 1
             if cleared and on_scene:
                 incident["status"] = "RESOLVED"
                 metrics = self.state["effectiveness_metrics"]
@@ -594,7 +701,7 @@ class SheffieldSim:
             self._spawn()
         metrics = self.state["effectiveness_metrics"]
         active = [i for i in self.state["active_incidents"].values() if i["status"] != "RESOLVED"]
-        metrics["severity_tick_exposure"] += sum(i.get("water_level", i["severity"]) for i in active)
+        metrics["severity_tick_exposure"] += sum(i.get("water_level", i.get("incident_intensity", i["severity"])) for i in active)
         metrics["road_closed_ticks"] += sum(i["road_blocked"] for i in active)
         metrics["unresolved_incidents"] = len(active)
         metrics["overall_score"] = effectiveness_score_breakdown(metrics)["overall_score"]
@@ -681,6 +788,32 @@ def run_park_square_flood_demo(graph=None, response_delay=0, ticks=60):
             "visual_observation": incident["visual_observation"], "trace": trace}
 
 
+def run_incident_profile_demo(incident_type, graph=None, response_delay=0, ticks=60, cam_id="CAM_08"):
+    """Model-free scripted probe; each profile gets its applicable response."""
+    if incident_type not in (*INCIDENT_PROFILES, "flood"):
+        raise ValueError("Unknown incident type")
+    if (response_delay is not None and (type(response_delay) is not int or response_delay < 0)) or type(ticks) is not int or ticks < 1:
+        raise ValueError("Invalid response delay or tick horizon")
+    sim = SheffieldSim(graph=graph)
+    incident = sim.start_incident_profile(cam_id, incident_type)
+    units = {"flood": ["FIRE_1", "POL_2"], "building_fire": ["FIRE_1", "POL_2"],
+             "road_collision": ["AMB_1", "POL_2"], "medical_emergency": ["AMB_1"]}[incident_type]
+    trace = []
+    for _ in range(ticks):
+        if sim.state["tick"] == response_delay:
+            sim.dispatch(cam_id, units, controller="HUMAN")
+        sim.tick(spawn=False)
+        trace.append({"tick": sim.state["tick"], "stage": incident["stage"], "status": incident["status"],
+                      "severity": incident["severity"], "intensity": incident.get("incident_intensity", incident.get("water_level")),
+                      "road_blocked": incident["road_blocked"], "control_state": incident["control_state"]})
+    return {"incident_type": incident_type, "camera_id": cam_id, "response_delay_ticks": response_delay,
+            "effectiveness_metrics": sim.state["effectiveness_metrics"],
+            "score_breakdown": effectiveness_score_breakdown(sim.state["effectiveness_metrics"]),
+            "stage_history": incident["stage_history"], "final_status": incident["status"],
+            "resources": {key: {k: sim.state["resource_db"][key][k] for k in ("status", "lat", "lon", "total_depletion_ticks_remaining")} for key in units},
+            "visual_observation": incident["visual_observation"], "trace": trace}
+
+
 def compare_park_square_responses(graph=None, ticks=60):
     """Same environment/horizon, four scripted policies; no models or footage."""
     if graph is None:
@@ -703,6 +836,7 @@ if __name__ == "__main__":
     parser.add_argument("--download-osm", action="store_true")
     parser.add_argument("--cosmos-manifest", action="store_true", help="Print the four stage clip specifications; does not generate video")
     parser.add_argument("--cosmos-reference", type=Path, help="Local Park Square reference frame for the manifest")
+    parser.add_argument("--incident-demo", choices=("flood", "building_fire", "road_collision", "medical_emergency"), help="Run a staged incident without models or footage")
     parser.add_argument("--compare-flood", action="store_true", help="Compare prompt, delayed and absent scripted responses without Cosmos")
     parser.add_argument("--flood-demo", action="store_true", help="Run staged Park Square flood with scripted Fire/Police response")
     parser.add_argument("--response-delay", type=int, default=0, help="Dispatch delay in ticks for --flood-demo")
@@ -713,6 +847,12 @@ if __name__ == "__main__":
         raise SystemExit(0)
     if args.ticks < 0 or args.response_delay < 0:
         parser.error("Ticks and response delay must be nonnegative")
+    if args.incident_demo:
+        if args.ticks < 1 or args.road_report or args.flood_demo or args.compare_flood:
+            parser.error("--incident-demo requires positive --ticks and cannot combine with other scenario/report modes")
+        graph, _ = load_sheffield_graph(download=args.download_osm, strict=True)
+        print(json.dumps(run_incident_profile_demo(args.incident_demo, graph, args.response_delay, args.ticks), indent=2))
+        raise SystemExit(0)
     if args.compare_flood:
         if args.ticks < 1 or args.road_report or args.flood_demo:
             parser.error("--compare-flood needs positive --ticks and cannot combine with --flood-demo/--road-report")
