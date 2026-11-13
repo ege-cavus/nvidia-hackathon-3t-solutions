@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS crew_assignments (
     released_at         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_crew_active ON crew_assignments(person_id) WHERE released_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_alloc_active ON allocations(unit_id) WHERE released_at IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_crew_active ON crew_assignments(person_id) WHERE released_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS inventory_ledger (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -110,3 +110,18 @@ ledgers; current legacy adapters do not consume ReportDrivenWorld automatically.
 Demo images are pre-generated assets referenced per report; missing media is
 explicit. Preserve these interfaces and coordinate schema/profile changes with
 Track 4. Legacy sheffield_sim.py scenarios remain experimental regression tools.
+
+## Final-demo integration
+
+The user authorised integration on integrate/final-demo, including narrow hub
+adaptation in sheffield_sim.py. See docs/INTEGRATED_DEMO.md. Active backend code
+is urban_response/: canonical Incident/IncidentResponse, SQLite concrete fleet
+and crews, three parallel agency agents and distinct Qwen intake/evaluator roles.
+The report-driven bridge owns graph movement, observed work and resource release;
+Qwen dispatch assessment never implies actual incident resolution. Legacy root
+adapters and the six-unit solo-game prototype remain regression paths.
+
+World mode uses UR_WORLD_SCENARIO and a fresh demo DB, pauses ticks during model
+decisions, and can accelerate with UR_TIME_SCALE/UR_WORLD_AUTORUN. Only explicitly
+approved_media scenario assets are sent to vision. Preserve both backend and
+legacy test suites. Do not reinstate independent wall-clock release in world mode.

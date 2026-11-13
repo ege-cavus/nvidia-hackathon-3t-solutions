@@ -10,6 +10,7 @@ import asyncio
 import hmac
 import ipaddress
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -24,10 +25,11 @@ from pydantic import BaseModel
 from .agents.orchestrator import Orchestrator
 from .briefing import build_brief
 from .config import ROOT, get_settings
-from .db import Database
+from .db import Database, time_scale
 from .schemas import Incident, IncidentStatus, PipelineResult
 from .seed import seed
 from .ui_adapter import EventFeed, make_router
+from .world import GraphReportWorld, WorldConflict, WorldDatabase
 
 STATIC = Path(__file__).parent / "static"
 WEB = ROOT / "web"  # demo dashboard
@@ -38,8 +40,13 @@ state: dict = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    db = Database(settings.db_path)
+    db = WorldDatabase(settings.db_path)
     seed(db)
+    scenario = os.getenv("UR_WORLD_SCENARIO")
+    if scenario:
+        if db._conn.execute("SELECT COUNT(*) FROM allocations WHERE released_at IS NULL").fetchone()[0]:
+            raise WorldConflict("Use a fresh demo database for world mode; active reservations cannot be reconstructed")
+        db.graph_world = GraphReportWorld(db, scenario)
     state.update(
         settings=settings,
         db=db,
@@ -48,18 +55,26 @@ async def lifespan(app: FastAPI):
         orch_mock=Orchestrator(db, replace(settings, llm_mode="mock")),
         jobs={},
         feed=EventFeed(),
+        world=db.graph_world,
     )
 
     async def sweeper():
         """Autonomous unit return: release units and crews whose expected release time has passed."""
         while True:
-            await asyncio.sleep(5)
+            automatic = state.get("world") is not None and os.getenv("UR_WORLD_AUTORUN", "0") == "1"
+            await asyncio.sleep(60 / time_scale() if automatic else 5)
             try:
-                released = db.release_due()
+                world = state.get("world")
+                if world is not None and os.getenv("UR_WORLD_AUTORUN", "0") == "1" and not world.inflight:
+                    await world.dispatch_due(state["orch"], _world_event)
+                    world.tick()
+                    released = world.last_released
+                else:
+                    released = db.release_due()
                 if released:
                     state["feed"].units_returned(released)
-            except Exception:  # keep sweeping even if one pass fails
-                pass
+            except Exception:  # keep sweeping, but surface failures instead of hiding them
+                logging.getLogger(__name__).exception("Resource/world clock update failed")
 
     sweep = asyncio.create_task(sweeper())
     # Warm MiniLM in the background so the first report is not slowed by model loading.
@@ -71,6 +86,43 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Sheffield Urban Response", version="0.3.0", lifespan=lifespan)
+
+
+@app.exception_handler(WorldConflict)
+async def world_conflict(request, error):
+    return JSONResponse({"detail": str(error)}, status_code=409)
+
+
+async def _world_event(incident_id, name, payload):
+    state["feed"].on_job_event(incident_id, name, payload)
+
+
+@app.get("/world/state")
+def world_state():
+    world = state.get("world")
+    if world is None:
+        raise HTTPException(409, "Set UR_WORLD_SCENARIO and use a fresh demo database")
+    return world.snapshot()
+
+
+@app.post("/world/dispatch-due")
+async def world_dispatch_due():
+    world = state.get("world")
+    if world is None:
+        raise HTTPException(409, "World mode is not enabled")
+    if world.inflight:
+        raise WorldConflict("A model decision window is already open")
+    return await world.dispatch_due(state["orch"], _world_event)
+
+
+@app.post("/world/advance")
+async def world_advance():
+    world = state.get("world")
+    if world is None:
+        raise HTTPException(409, "World mode is not enabled")
+    world.tick()
+    state["feed"].units_returned(world.last_released)
+    return world.snapshot()
 
 
 # ---- Access control -------------------------------------------------------------- #
@@ -311,7 +363,12 @@ async def job_events(job_id: str):
 def reset():
     if any(not j["done"] for j in state["jobs"].values()):
         raise HTTPException(409, "Wait for running incidents to finish")
+    if state.get("world") is not None and state["world"].inflight:
+        raise WorldConflict("Finish model decisions before resetting")
     seed(state["db"], force=True)
+    if state.get("world") is not None:
+        state["db"].graph_world = GraphReportWorld(state["db"], os.environ["UR_WORLD_SCENARIO"])
+        state["world"] = state["db"].graph_world
     state["jobs"].clear()
     state["feed"].clear()
     return {"ok": True}
@@ -400,7 +457,7 @@ def conflicts(incident_id: int | None = None, response_id: int | None = None):
 
 
 @app.post("/units/{unit_id}/release")
-def release_unit(unit_id: int):
+def release_unit(unit_id: str):
     return {"released": state["db"].release_unit(unit_id)}
 
 

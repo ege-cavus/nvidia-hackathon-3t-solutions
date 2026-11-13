@@ -378,6 +378,38 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
                 out[j["incident_id"]] = "error" if j.get("outcome") == "error" else ("done" if j["done"] else "running")
         return out
 
+    @r.get("/world")
+    def world_summary():
+        world = state.get("world")
+        if world is None:
+            return {"enabled":False}
+        return {"enabled":True, "tick":world.state["tick"], "inflight":world.inflight,
+                "active":sum(i["status"]!="RESOLVED" for i in world.state["active_incidents"].values()),
+                "outcomes":{str(case_id):{"status":world.state["active_incidents"][node]["status"],
+                    "severity":world.state["active_incidents"][node]["severity"],
+                    **world.evaluate_response(node)} for case_id,node in world.case_nodes.items()}}
+
+    @r.post("/world/dispatch")
+    async def dispatch_world():
+        from .world import WorldConflict
+        world = state.get("world")
+        if world is None or world.inflight:
+            raise WorldConflict("Authored world is disabled or waiting for a model decision")
+        async def event(case_id,name,payload):
+            state["feed"].on_job_event(case_id,name,payload)
+        await world.dispatch_due(state["orch"],event)
+        return world_summary()
+
+    @r.post("/world/advance")
+    async def advance_world():
+        from .world import WorldConflict
+        world = state.get("world")
+        if world is None:
+            raise WorldConflict("Authored world is disabled")
+        world.tick()
+        state["feed"].units_returned(world.last_released)
+        return world_summary()
+
     @r.get("/health")
     def health():
         s = state["settings"]
@@ -454,6 +486,19 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         if conds:
             q += " WHERE " + " AND ".join(conds)
         rows = db()._conn.execute(q + " ORDER BY u.callsign", args).fetchall()
+        world = getattr(db(), "graph_world", None)
+        if world is not None:
+            out = []
+            for row in rows:
+                u = dict(row)
+                moving = world.state["resource_db"].get(u["unit_id"], {})
+                out.append({"id":u["unit_id"], "callsign":u["callsign"], "resource_type":u["resource_type"],
+                            "agency":u["agency"], "station_id":station_id(u["station"],u["agency"]),
+                            "lat":moving.get("lat",u["lat"]), "lon":moving.get("lon",u["lon"]),
+                            "status":"committed" if u["incident_id"] else "available" if u["status"]=="available" else "out_of_service",
+                            "incident_id":_sid(u["incident_id"]), "world_stage":moving.get("status"),
+                            "back_in_service_min":moving.get("total_depletion_ticks_remaining")})
+            return out
         return [{"id": u["unit_id"], "callsign": u["callsign"], "resource_type": u["resource_type"], "agency": u["agency"],
                  "station_id": station_id(u["station"], u["agency"]), "lat": u["lat"], "lon": u["lon"],
                  "status": "out_of_service" if u["status"] != "available" else ("committed" if u["incident_id"] else "available"),

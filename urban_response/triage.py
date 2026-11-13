@@ -45,14 +45,14 @@ _KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("hazmat", ("chemical", "tanker leaking", "toxic", "fumes", "spill")),
     ("gas_leak", ("gas leak", "smell of gas", "gas smell")),
     ("rtc", ("collision", "crash", "car hit", "hit a", "knocked down", "rtc", "swerved", "overturned", "pile-up")),
-    ("flood", ("flood", "flooding", "water rising")),
-    ("cardiac_arrest", ("not breathing", "cardiac", "collapsed and", "no pulse", "cpr")),
+    ("flood", ("flood", "flooding", "water rising", "standing water")),
+    ("cardiac_arrest", ("not breathing", "cardiac", "no pulse", "cpr")),
     ("overdose", ("overdose", "took too many")),
     ("assault", ("assault", "fight", "punched", "attacked", "beaten")),
     ("public_disorder", ("riot", "disorder", "crowd fighting", "brawl")),
     ("missing_person", ("missing", "can't find", "cannot find")),
     ("fall", ("fell", "fallen", "fall from")),
-    ("medical", ("unconscious", "chest pain", "seizure", "fitting", "bleeding", "injured", "unwell")),
+    ("medical", ("unconscious", "chest pain", "seizure", "fitting", "bleeding", "injured", "unwell", "collapsed", "not responding")),
 ]
 
 

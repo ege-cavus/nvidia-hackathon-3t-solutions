@@ -1,0 +1,92 @@
+{
+  "kind": "SINGLE_SCENE_LIVE_INTEGRATION_SMOKE_CHECK_NOT_A_BENCHMARK",
+  "date": "2026-11-13",
+  "scenario": "CAM_01 station fire; authored report only; no approved image supplied",
+  "routing": {
+    "mode": "osmnx",
+    "tick_seconds": 60,
+    "fallback_reason": null
+  },
+  "models": {
+    "qwen": "qwen3.6:35b-a3b",
+    "nemotron": "nemotron-3.5-lightning:30b"
+  },
+  "calls": [
+    {
+      "role": "Qwen triage",
+      "provider": "openai",
+      "model": "qwen3.6:35b-a3b",
+      "ok": true,
+      "latency_ms": 2828
+    },
+    {
+      "role": "Qwen route",
+      "provider": "openai",
+      "model": "qwen3.6:35b-a3b",
+      "ok": true,
+      "latency_ms": 1717
+    },
+    {
+      "role": "A3 fire",
+      "provider": "openai",
+      "model": "nemotron-3.5-lightning:30b",
+      "ok": true,
+      "latency_ms": 15180
+    },
+    {
+      "role": "A1 police",
+      "provider": "openai",
+      "model": "nemotron-3.5-lightning:30b",
+      "ok": true,
+      "latency_ms": 21655
+    },
+    {
+      "role": "A2 ambulance",
+      "provider": "openai",
+      "model": "nemotron-3.5-lightning:30b",
+      "ok": true,
+      "latency_ms": 27836
+    },
+    {
+      "role": "CR",
+      "provider": "openai",
+      "model": "nemotron-3.5-lightning:30b",
+      "ok": true,
+      "latency_ms": 8665
+    },
+    {
+      "role": "Qwen evaluate",
+      "provider": "openai",
+      "model": "qwen3.6:35b-a3b",
+      "ok": true,
+      "latency_ms": 6813
+    }
+  ],
+  "allocation_count": 7,
+  "allocations_by_type": {
+    "aerial_ladder_platform": 1,
+    "drone": 1,
+    "fire_engine": 2,
+    "mobile_command_unit": 1,
+    "patrol_car": 2
+  },
+  "cr_executed_by": "nemotron",
+  "assessment_executed_by": "qwen",
+  "world_final_tick": 360,
+  "world_incident_status": "RESOLVED",
+  "spread_events": [
+    {
+      "tick": 6,
+      "rule_id": "station-fire-secondary-node",
+      "outcome": "PREVENTED"
+    }
+  ],
+  "active_allocations_at_end": 0,
+  "all_types_available_at_end": true,
+  "limits": [
+    "One source incident, not repeated-model reliability evidence.",
+    "Full prompts/raw outputs remain local under ignored demo_output.",
+    "Scene/work/cooldown values and seeded fleet are game assumptions.",
+    "Reviewed-media multimodal payload and four-incident shared-fleet/API behaviour have offline integration coverage."
+  ]
+}

@@ -1,7 +1,7 @@
 """Runtime configuration, read from environment variables.
 
 Production target: both models behind OpenAI-compatible endpoints (vLLM / NIM /
-SGLang) on the DGX Spark. Qwen only routes; the four Nemotron agents (A1-A3 and
+SGLang) on the DGX Spark. Qwen handles intake and post-dispatch assessment; the four Nemotron agents (A1-A3 and
 CR) share one Nemotron endpoint unless CR_* overrides are set.
 
 LLM_MODE=mock      no model server: deterministic heuristics, tagged executed_by="mock"

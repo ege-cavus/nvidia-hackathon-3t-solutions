@@ -52,9 +52,10 @@ log = logging.getLogger(__name__)
 EventFn = Callable[[str, dict], Awaitable[None]] | None
 
 SYSTEM = (
-    "You are the Sheffield multi-agency emergency response orchestrator. You take incidents in, route them to the "
-    "specialist agents (A1 police, A2 ambulance, A3 fire & rescue), and after dispatch you judge whether the "
-    "response met the need. You write for dispatchers: short, factual, no speculation."
+    "You are Qwen Intake for a Sheffield emergency-response simulation. Assess caller reports and "
+    "any supplied image, separate reported claims from visible evidence, and identify the lead agency. "
+    "All three specialist agents assess the incident independently. Do not infer water depth or "
+    "confirmed occupants from ambiguous pixels. Write short factual assessments with uncertainty."
 )
 
 
@@ -99,6 +100,14 @@ class EvaluationDraft(BaseModel):
     dek: str = Field(description="One-sentence summary under the headline, at most 200 characters")
 
 
+EVALUATOR_SYSTEM = (
+    "You are the independent post-dispatch assessor role for a Sheffield simulation. "
+    "Assess allocation adequacy using supplied code metrics and evidence. "
+    "A dispatch verdict is not evidence of actual arrival, containment, resolution or resource release. "
+    "Do not invent observed outcomes. Return concise structured findings."
+)
+
+
 class Orchestrator:
     def __init__(self, db: Database, settings: Settings | None = None):
         self.db = db
@@ -122,7 +131,10 @@ class Orchestrator:
             f"Location already resolved by code: {base.location_resolved_by} ({base.place})"
         )
         try:
-            d, _ = await chat_json(self.settings.orchestrator, SYSTEM, prompt, TriageDraft, label="Qwen triage")
+            world = getattr(self.db, "graph_world", None)
+            image = world.intake_image(incident) if world is not None else None
+            options = {"images":[image]} if image else {}
+            d, _ = await chat_json(self.settings.orchestrator, SYSTEM, prompt, TriageDraft, label="Qwen triage", **options)
         except LLMError as e:
             log.warning("Triage fell back to rules: %s", e)
             return base.model_copy(update={"executed_by": ExecutedBy.fallback})
@@ -188,10 +200,17 @@ class Orchestrator:
             incident.incident_id = self.db.next_id("incidents", "incident_id", incident.received_at)
             proposal, candidates = await asyncio.to_thread(dedup.propose, incident, tri, self.db.recent_incidents(dedup.WINDOW_MIN))
             self.db.insert_incident(incident, tri)
+        world = getattr(self.db, "graph_world", None)
+        if world is not None:
+            world.bind_case(incident)
         case = Case(incident=incident, triage=tri)
         self.db.add_log(incident.incident_id, "received", briefing.log_received(case))
 
         decision = await self.decide_duplicate(incident, tri, proposal, candidates)
+        if world is not None and decision.verdict == DedupVerdict.duplicate:
+            if world.case_nodes.get(decision.match_incident_id) != world.case_nodes.get(incident.incident_id):
+                decision = decision.model_copy(update={"verdict":DedupVerdict.related,
+                    "reason":"Separate authored affected graph node; preserve the new incident and causal report."})
         if decision.verdict == DedupVerdict.duplicate:
             parent = self.db.merge_incident(incident.incident_id, decision.match_incident_id)
             decision = decision.model_copy(update={"match_incident_id": parent})
@@ -266,6 +285,8 @@ class Orchestrator:
         }
         prompt = (
             "Judge this dispatched response. The METRICS were computed by code and are correct; base your judgement on "
+            "them. Arrival values are estimates, not observations. Assess the dispatch plan only; do not claim "
+            "that the incident is extinguished or resources have actually arrived. Base your judgement on "
             "them. Score 0-100. Verdict: resolved (all essential needs met in time), resolved_with_gaps, or "
             "follow_up_required (essential needs unmet). Give at most 4 findings, each one plain sentence a dispatcher "
             "understands. Then write a news headline (at most 90 characters) and a one-sentence dek (at most 200 "
@@ -274,7 +295,7 @@ class Orchestrator:
             f"METRICS:\n{json.dumps(metrics)}\n\nRule-based score for reference: {base.score}"
         )
         try:
-            d, _ = await chat_json(self.settings.orchestrator, SYSTEM, prompt, EvaluationDraft, label="Qwen evaluate")
+            d, _ = await chat_json(self.settings.orchestrator, EVALUATOR_SYSTEM, prompt, EvaluationDraft, label="Qwen evaluate")
         except LLMError as e:
             log.warning("Evaluation fell back to rules: %s", e)
             return base.model_copy(update={"executed_by": ExecutedBy.fallback})
@@ -289,6 +310,16 @@ class Orchestrator:
     # full loop ------------------------------------------------------------------ #
 
     async def handle(self, report: Incident, on_event: EventFn = None) -> PipelineResult:
+        world = getattr(self.db, "graph_world", None)
+        if world is not None:
+            world.inflight += 1
+        try:
+            return await self._handle(report, on_event)
+        finally:
+            if world is not None:
+                world.inflight -= 1
+
+    async def _handle(self, report: Incident, on_event: EventFn = None) -> PipelineResult:
         incident, decision = await self.ingest(report)
         await _emit(on_event, "ingested", {"incident": incident.incident.canonical_json(),
                                            "triage": incident.triage.model_dump(mode="json"),
@@ -317,7 +348,7 @@ class Orchestrator:
             await _emit(on_event, "agent_done", resp.model_dump(mode="json"))
             return resp
 
-        responses = list(await asyncio.gather(*(run_agent(a) for a in routing.agencies)))
+        responses = list(await asyncio.gather(*(run_agent(a) for a in self.agents)))
         response = await self.cr.resolve_and_commit(incident, routing, responses, on_event=on_event,
                                                     dedup=decision, related=related)
 

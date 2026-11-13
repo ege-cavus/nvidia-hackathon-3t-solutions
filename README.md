@@ -4,6 +4,10 @@ This branch combines the agent backend, dashboard and authored-report graph worl
 See [REPORT_PIPELINE.md](REPORT_PIPELINE.md) for reports, Cosmos assets and world outcomes.
 Run from this source checkout; model weights and the OSM cache remain local.
 
+**Start here:** [Integrated demo setup and validation](docs/INTEGRATED_DEMO.md).
+It explains canonical reports, all-three-agent assessment, graph-owned resource
+release, reviewed media and the accelerated dashboard clock.
+
 # nvidia-hackathon-3t-solutions
 Urban Response Research: agentic multi-agency incident response for Sheffield, running locally on an NVIDIA DGX Spark (128 GB).
 

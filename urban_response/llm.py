@@ -17,6 +17,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TypeVar
 
 from openai import AsyncOpenAI
@@ -64,7 +65,8 @@ def _trace(record: dict) -> None:
     path = os.getenv("UR_TRACE_FILE")
     if not path:
         return
-    with open(path, "a") as f:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str) + "\n")
 
 
@@ -94,10 +96,16 @@ async def chat_json(
     out: type[T],
     retries: int = 1,
     label: str = "",
+    images: list[str] | None = None,
 ) -> tuple[T, int]:
     """Return (validated model, latency_ms). Raises LLMError after retries."""
     system = system + "\n\nRespond with a single JSON object matching this schema:\n" + json.dumps(out.model_json_schema())
     messages: list[dict] = [{"role": "user", "content": user}]
+    if images:
+        if ep.provider == "claude-code":
+            raise LLMError("Approved images require a vision-serving endpoint")
+        messages[0]["content"] = [{"type":"text", "text":user}] + [
+            {"type":"image_url", "image_url":{"url":url}} for url in images]
 
     last_err: Exception | None = None
     t0 = time.perf_counter()

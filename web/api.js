@@ -52,6 +52,9 @@ window.SURU_API = (function () {
   const P = "/ui";
   const real = {
     mode: "live",
+    world: () => http(`${P}/world`),
+    dispatchWorld: () => http(`${P}/world/dispatch`, "POST"),
+    advanceWorld: () => http(`${P}/world/advance`, "POST"),
     health: () => http(`${P}/health`),
     incidents: () => http(`${P}/incidents`).then((l) => l.map(normIncident)),
     responses: (id) => http(id ? `${P}/incidents/${id}/responses` : `${P}/responses`).then((l) => l.map(normResponse)),

@@ -67,7 +67,18 @@ const visible = (inc) => ui.chips.size === 0 || ui.chips.has(chipOf(inc));
 
 async function poll() {
   try {
-    const [incidents, responses, events] = await Promise.all([API.call("incidents"), API.call("responses"), API.call("events", store.lastEventId)]);
+    const [incidents, responses, events, world] = await Promise.all([API.call("incidents"), API.call("responses"), API.call("events", store.lastEventId), API.call("world")]);
+    store.world = world;
+    const enabled = !!world?.enabled;
+    document.body.classList.toggle("world-enabled", enabled);
+    $("world-controls").hidden = !enabled;
+    $("run-demo").hidden = enabled;
+    $("new-incident").hidden = enabled;
+    if (enabled) {
+      $("world-status").textContent = `Authored scenario · minute ${world.tick} · ${world.active} active incidents${world.inflight ? " · agents assessing" : ""}`;
+      $("world-advance").disabled = !!world.inflight;
+      $("world-dispatch").disabled = !!world.inflight;
+    }
     store.incidents = incidents || [];
     store.responses = responses || [];
     if (events && events.length) {
@@ -312,7 +323,8 @@ function renderDrawer() {
   const r = latestResponse(inc.id);
   const history = store.responses.filter((x) => x.incident_id === inc.id);
   // Polls arrive every 2 s; re-render only on change so open "Raw" panels and text selections survive.
-  const sig = JSON.stringify([inc, r, history.length, ui.tab]);
+  const outcome = store.world?.outcomes?.[inc.id];
+  const sig = JSON.stringify([inc, r, history.length, ui.tab, outcome]);
   if (sig === drawerSig) return;
   drawerSig = sig;
   const tabs = [["summary", "Summary"], ["resources", "Resources"], ["agencies", "Agencies"], ["conflicts", `Conflicts${r && (r.hard_conflicts.length + r.soft_conflicts.length) ? ` (${r.hard_conflicts.length + r.soft_conflicts.length})` : ""}`], ["history", `History (${history.length})`]];
@@ -322,10 +334,11 @@ function renderDrawer() {
       ${pill(inc.status)}
       <div class="d-actions">
         ${inc.status === "failed" && API.can("retryIncident") ? `<button class="btn small" type="button" data-act="retry">Retry</button>` : ""}
-        ${inc.status !== "closed" ? `<button class="btn small" type="button" data-act="close-incident">Close incident</button>` : ""}
+        ${inc.status !== "closed" && !store.world?.enabled ? `<button class="btn small" type="button" data-act="close-incident">Close incident</button>` : ""}
         <button class="btn small ghost" type="button" data-act="deselect" aria-label="Hide detail">Hide</button>
       </div>
     </div>
+    ${outcome ? `<p class="muted">World outcome: ${esc(outcome.status)} · containment ${outcome.containment_success ? "achieved" : "pending"} · effective work ${outcome.effective_work_ticks} min. Dispatch assessment is separate.</p>` : ""}
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" type="button" data-tab="${k}" aria-selected="${ui.tab === k}">${t}</button>`).join("")}</div>
     <div class="d-body">${r || ui.tab === "summary" ? TAB[ui.tab](inc, r, history) : `<p class="empty">The agents are still routing this incident.</p>`}</div>`;
   drawer.querySelector(".d-body").scrollTop = scroll;
@@ -707,6 +720,14 @@ document.addEventListener("click", async (ev) => {
   }
 });
 $("run-demo").addEventListener("click", runDemo);
+for (const [id, action] of [["world-dispatch", "dispatchWorld"], ["world-advance", "advanceWorld"]]) {
+  $(id).addEventListener("click", async () => {
+    $(id).disabled = true;
+    try { await API.call(action); await poll(); }
+    catch (err) { $("world-status").textContent = `Scenario update failed: ${err.message}`; }
+    finally { $(id).disabled = false; }
+  });
+}
 $("reset-demo").addEventListener("click", resetDemo);
 $("new-incident").addEventListener("click", () => { $("incident-error").textContent = ""; $("incident-dialog").showModal(); });
 $("open-resources").addEventListener("click", () => { $("resources-dialog").showModal(); renderResources(); });

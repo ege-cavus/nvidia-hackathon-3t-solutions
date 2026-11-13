@@ -243,13 +243,14 @@ async def test_cr_trims_overlapping_requests(db, settings, monkeypatch):
          "directives": [{"agency": "all", "action": "Single RVP at the station", "priority": "immediate"}]},
         triage={"category": "structure_fire", "severity": 3, "casualties": 0, "trapped": 0, "weapons": False, "rationale": "r"},
         agencies=(Agency.police, Agency.fire), lead=Agency.fire,
-        agent_requests=lambda s: [{"resource_type": "drone", "quantity": 1, "priority": 3},
-                                  {"resource_type": "fire_engine" if "A3" in s else "patrol_car", "quantity": 2}])
+        agent_requests=lambda s: [{"resource_type": "drone", "quantity": 1, "priority": 3}] +
+            ([{"resource_type": "fire_engine", "quantity": 2}] if "A3" in s else
+             [{"resource_type": "patrol_car", "quantity": 2}] if "A1" in s else []))
     for mod in (orch_mod, spec_mod, cr_mod):
         monkeypatch.setattr(mod, "chat_json", fake)
     r = (await Orchestrator(db, replace(settings, llm_mode="live")).handle(make_report("structure_fire"))).response
-    assert r.requested_total["drone"] == 2 and sum(1 for a in r.allocations if a.resource_type == "drone") == 1
-    assert r.evaluation.metrics["trimmed_units"] == 1
+    assert r.requested_total["drone"] == 3 and sum(1 for a in r.allocations if a.resource_type == "drone") == 1
+    assert r.evaluation.metrics["trimmed_units"] == 2
 
 
 async def test_live_mode_falls_back_when_models_fail(db, settings, monkeypatch):
@@ -418,7 +419,7 @@ def test_skills_are_loaded_without_their_io_contract():
     from urban_response import skills
     for a in ("police", "ambulance", "fire"):
         k = skills.service_skill(a)
-        assert "Assessment method" in k and "Guardrails" in k and "severity 1â€“5" in k
+        assert "Assessment method" in k and "Guardrails" in k and "severity 1\u20135" in k
         assert "proposal_schema" not in k and "police_patrol_car" not in k and "requires_human_review" not in k
     arb = skills.arbiter_skill()
     assert "Respect specialist proposals" in arb and "allocator_output_schema" not in arb

@@ -129,6 +129,7 @@ def load_sheffield_graph(download=False, cache="assets/sheffield.graphml", stric
 class SheffieldSim:
     def __init__(self, state=None, graph=None, seed=42, demo=False, download=False):
         self.state = state if state is not None else get_initial_city_state()
+        self.hubs = EMERGENCY_HUBS
         self.rng = random.Random(seed)
         self.demo = demo
         if graph is None:
@@ -167,7 +168,7 @@ class SheffieldSim:
         projected = ox.project_graph(self.graph)
         transform = Transformer.from_crs("EPSG:4326", projected.graph["crs"], always_xy=True)
         mappings = {}
-        for key, point in {**EMERGENCY_HUBS, **HERO_CAMERAS}.items():
+        for key, point in {**self.hubs, **HERO_CAMERAS}.items():
             x, y = transform.transform(point["lon"], point["lat"])
             edge, edge_distance = ox.distance.nearest_edges(projected, x, y, return_dist=True)
             node, node_distance = ox.distance.nearest_nodes(projected, x, y, return_dist=True)
@@ -432,11 +433,11 @@ class SheffieldSim:
         unit = self.state["resource_db"][unit_id]
         incident = self.state["active_incidents"].get(cam_id, {})
         camera = incident.get("staging_location", incident.get("location", HERO_CAMERAS.get(cam_id)))
-        home = EMERGENCY_HUBS[unit["home_hub"]]
+        home = self.hubs[unit["home_hub"]]
         excluded = incident.get("hazard_edges", ())
         outward = self._route(unit, camera, excluded)
         # Trauma patients go to Northern General; Hallamshire is only a demo base.
-        hospital = EMERGENCY_HUBS["NHS_NORTHERN_GEN"] if unit["agency"] == "AMBULANCE" else home
+        hospital = self.hubs["NHS_NORTHERN_GEN"] if unit["agency"] == "AMBULANCE" else home
         returning = self._route(camera, hospital, excluded)
         final = self._route(hospital, home, excluded) if hospital is not home and hospital != home else None
         cooldown = 2 if unit["agency"] in ("FIRE", "AMBULANCE") else 0
@@ -659,7 +660,7 @@ class SheffieldSim:
                     self._record_response(incident)
             unit["status"] = unit["phases"][0]["status"] if unit["phases"] else "AVAILABLE"
             if not unit["phases"]:
-                home = EMERGENCY_HUBS[unit["home_hub"]]
+                home = self.hubs[unit["home_hub"]]
                 unit.update(lat=home["lat"], lon=home["lon"], assigned_cam=None)
         self._sync_total(unit)
 
@@ -674,7 +675,7 @@ class SheffieldSim:
                 raise ValueError(f"{key}: inconsistent total depletion")
             phases = unit.get("phases", [])
             if unit["status"] == "AVAILABLE":
-                home = EMERGENCY_HUBS[unit["home_hub"]]
+                home = self.hubs[unit["home_hub"]]
                 if unit["assigned_cam"] is not None or phases or unit["total_depletion_ticks_remaining"] != 0:
                     raise ValueError(f"{key}: available unit still holds work")
                 if (unit["lat"], unit["lon"]) != (home["lat"], home["lon"]):
