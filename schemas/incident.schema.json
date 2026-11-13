@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Incident",
+  "type": "object",
+  "required": ["incident_id", "received_at", "channel", "location", "description"],
+  "properties": {
+
+    "incident_id": { "type": "integer", "description": "YYYYMMDDNNNNNN, assigned by the database" },
+    "received_at": { "type": "string", "format": "date-time" },
+    "channel": { "enum": ["999", "112", "text", "app", "alarm"] },
+
+    "caller": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "phone": { "type": ["string", "null"] },
+        "relationship": { "enum": ["witness", "involved", "passer_by", "resident", "third_party", null] },
+        "on_scene": { "type": ["boolean", "null"] }
+      }
+    },
+
+    "location": {
+      "type": "object",
+      "anyOf": [
+        { "required": ["address"] },
+        { "required": ["landmark"] },
+        { "required": ["lat", "lon"] }
+      ],
+      "properties": {
+        "address": { "type": ["string", "null"] },
+        "landmark": { "type": ["string", "null"] },
+        "lat": { "type": ["number", "null"] },
+        "lon": { "type": ["number", "null"] },
+        "location_source": { "enum": ["caller_gps", "caller_stated", "cell_mast", "alarm_panel", null] },
+        "location_notes": { "type": ["string", "null"] }
+      }
+    },
+
+    "description": { "type": "string", "minLength": 1 },
+    "caller_reported_severity": { "type": ["string", "null"] },
+
+    "casualties_reported": { "type": ["integer", "null"], "minimum": 0 },
+    "people_trapped_reported": { "type": ["integer", "null"], "minimum": 0 },
+
+    "patients": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "approx_age": { "type": ["string", "null"] },
+          "sex": { "enum": ["male", "female", "unknown", null] },
+          "conscious": { "type": ["boolean", "null"] },
+          "breathing": { "enum": ["normal", "shallow", "none", null] },
+          "bleeding": { "type": ["boolean", "null"] },
+          "notes": { "type": ["string", "null"] }
+        }
+      }
+    },
+
+    "hazards_reported": { "type": "array", "items": { "type": "string" } },
+    "weapons_mentioned": { "type": ["boolean", "null"] },
+
+    "persons_of_interest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": { "enum": ["suspect", "missing", "victim", "other"] },
+          "description": { "type": ["string", "null"] },
+          "direction_of_travel": { "type": ["string", "null"] },
+          "armed": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+
+    "vehicles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": { "type": ["string", "null"] },
+          "description": { "type": ["string", "null"] },
+          "registration": { "type": ["string", "null"] },
+          "occupants": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    }
+  }
+}

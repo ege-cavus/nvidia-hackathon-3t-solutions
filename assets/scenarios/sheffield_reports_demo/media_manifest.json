@@ -1,0 +1,46 @@
+{
+  "generation_status": "NOT_GENERATED",
+  "provenance": "SYNTHETIC_DEMO_NOT_REAL_CCTV",
+  "items": [
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:00:00Z",
+      "image_path": "assets/incident_media/20261113000001.jpg",
+      "video_path": "assets/incident_media/20261113000001.mp4",
+      "prompt": "Synthetic emergency training illustration, fixed elevated CCTV-style viewpoint, no text overlays, approximate Sheffield setting rather than a verified camera view. Depict only the reported observations; do not invent confirmed injuries or identities. SYNTHETIC DEMO: A witness reports thick smoke and flames from a small exterior storage area near Sheffield Station. It is not clear whether anyone is inside.",
+      "reference_image": null
+    },
+    {
+      "incident_id": 20261113000002,
+      "received_at": "2026-11-13T09:00:00Z",
+      "image_path": "assets/incident_media/20261113000002.jpg",
+      "video_path": "assets/incident_media/20261113000002.mp4",
+      "prompt": "Synthetic emergency training illustration, fixed elevated CCTV-style viewpoint, no text overlays, approximate Sheffield setting rather than a verified camera view. Depict only the reported observations; do not invent confirmed injuries or identities. SYNTHETIC DEMO: A passer-by reports standing water covering the Park Square approach and vehicles stopping before the water. One car may be stranded; occupants are not confirmed.",
+      "reference_image": null
+    },
+    {
+      "incident_id": 20261113000003,
+      "received_at": "2026-11-13T09:00:00Z",
+      "image_path": "assets/incident_media/20261113000003.jpg",
+      "video_path": "assets/incident_media/20261113000003.mp4",
+      "prompt": "Synthetic emergency training illustration, fixed elevated CCTV-style viewpoint, no text overlays, approximate Sheffield setting rather than a verified camera view. Depict only the reported observations; do not invent confirmed injuries or identities. SYNTHETIC DEMO: A caller reports a two-car collision near the camera location. One occupant appears injured but conscious. Traffic is obstructed.",
+      "reference_image": null
+    },
+    {
+      "incident_id": 20261113000004,
+      "received_at": "2026-11-13T09:00:00Z",
+      "image_path": "assets/incident_media/20261113000004.jpg",
+      "video_path": "assets/incident_media/20261113000004.mp4",
+      "prompt": "Synthetic emergency training illustration, fixed elevated CCTV-style viewpoint, no text overlays, approximate Sheffield setting rather than a verified camera view. Depict only the reported observations; do not invent confirmed injuries or identities. SYNTHETIC DEMO: A passer-by reports an adult who has collapsed near Meadowhall Way. The person is reportedly breathing but not responding to speech.",
+      "reference_image": null
+    },
+    {
+      "incident_id": 20261113000005,
+      "received_at": "2026-11-13T09:06:00Z",
+      "image_path": "assets/incident_media/20261113000005.jpg",
+      "video_path": "assets/incident_media/20261113000005.mp4",
+      "prompt": "Synthetic emergency training illustration, fixed elevated CCTV-style viewpoint, no text overlays, approximate Sheffield setting rather than a verified camera view. Depict only the reported observations; do not invent confirmed injuries or identities. SYNTHETIC DEMO: a new smoke alarm reports smoke and a small secondary exterior fire at this node. The number of people nearby is unknown.",
+      "reference_image": null
+    }
+  ]
+}

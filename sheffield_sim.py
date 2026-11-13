@@ -40,7 +40,7 @@ INCIDENT_PROFILES = {
 
 
 def is_progressive_incident(incident):
-    return incident.get("progression_model") in ("park_square_flood_v1", "incident_profiles_v1")
+    return incident.get("progression_model") in ("park_square_flood_v1", "incident_profiles_v1", "report_driven_v1")
 
 
 def effectiveness_score_breakdown(metrics):
@@ -431,7 +431,7 @@ class SheffieldSim:
     def estimate_depletion_ticks(self, unit_id, cam_id, severity):
         unit = self.state["resource_db"][unit_id]
         incident = self.state["active_incidents"].get(cam_id, {})
-        camera = incident.get("staging_location", HERO_CAMERAS[cam_id])
+        camera = incident.get("staging_location", incident.get("location", HERO_CAMERAS.get(cam_id)))
         home = EMERGENCY_HUBS[unit["home_hub"]]
         excluded = incident.get("hazard_edges", ())
         outward = self._route(unit, camera, excluded)
@@ -631,7 +631,7 @@ class SheffieldSim:
         incident = self.state["active_incidents"].get(unit["assigned_cam"])
         holding_flood = (incident and is_progressive_incident(incident)
                          and incident["status"] != "RESOLVED")
-        if phase["status"] == "DEPLETED_ON_SCENE" and phase["remaining"] == 1 and incident and (holding_flood or (incident["severity"] >= 4 if unit["agency"] == "POLICE" else incident["severity"] > 1)):
+        if phase["status"] == "DEPLETED_ON_SCENE" and phase["remaining"] == 1 and incident and incident["status"] != "RESOLVED" and (holding_flood or (incident["severity"] >= 4 if unit["agency"] == "POLICE" else incident["severity"] > 1)):
             # Hazard escalation/cordon clearance can extend the nominal round-trip estimate.
             phase["remaining"] += 1
             unit["on_scene_ticks"] += 1

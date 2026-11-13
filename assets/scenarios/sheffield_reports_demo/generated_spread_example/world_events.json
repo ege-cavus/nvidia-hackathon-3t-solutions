@@ -1,0 +1,30 @@
+{
+  "tick": 6,
+  "reports": 5,
+  "spread_events": [
+    {
+      "tick": 6,
+      "rule_id": "station-fire-secondary-node",
+      "outcome": "SPREAD",
+      "parent_incident_id": 20261113000001,
+      "incident_id": 20261113000005,
+      "node_id": "OSM_1952229758"
+    }
+  ],
+  "response_events": [],
+  "score_breakdown": {
+    "scoring_version": "effectiveness-v2",
+    "components": {
+      "baseline": 100.0,
+      "sla_miss_penalty": -0.0,
+      "spillover_penalty": -3.0,
+      "resolution_reward": 0.0,
+      "exposure_penalty": -5.68,
+      "road_closure_penalty": -0.6000000000000001,
+      "unresolved_penalty": -100.0
+    },
+    "unclamped_score": -9.28,
+    "overall_score": 0.0,
+    "limitations": "Explicit game weights pending scenario-suite calibration; no clinical or operational interpretation"
+  }
+}

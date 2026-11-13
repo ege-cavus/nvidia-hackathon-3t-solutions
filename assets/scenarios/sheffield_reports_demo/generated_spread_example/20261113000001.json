@@ -1,0 +1,30 @@
+{
+  "incident_id": 20261113000001,
+  "received_at": "2026-11-13T09:00:00Z",
+  "channel": "999",
+  "caller": {
+    "name": null,
+    "phone": null,
+    "relationship": "witness",
+    "on_scene": true
+  },
+  "location": {
+    "landmark": "Sheaf St / Sheffield Station",
+    "lat": 53.3782,
+    "lon": -1.4628,
+    "location_source": "caller_stated",
+    "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+  },
+  "description": "SYNTHETIC DEMO: A witness reports thick smoke and flames from a small exterior storage area near Sheffield Station. It is not clear whether anyone is inside.",
+  "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+  "casualties_reported": 0,
+  "people_trapped_reported": 0,
+  "patients": [],
+  "hazards_reported": [
+    "smoke",
+    "fire"
+  ],
+  "weapons_mentioned": null,
+  "persons_of_interest": [],
+  "vehicles": []
+}
