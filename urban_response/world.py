@@ -272,9 +272,9 @@ class WorldDatabase(Database):
                  "report_count":r["report_count"],"incident":Incident.model_validate_json(r["incident_json"]),
                  "triage":Triage.model_validate_json(r["triage_json"])} for r in rows]
 
-    def commitment_timeline(self):
+    def fleet(self):
         if self.graph_world is None:
-            return super().commitment_timeline()
+            return super().fleet()
         rows = self._conn.execute("SELECT a.unit_id,a.incident_id,a.expected_release_at,u.callsign,u.resource_type,u.agency,u.station FROM allocations a JOIN units u ON u.unit_id=a.unit_id WHERE a.released_at IS NULL").fetchall()
         out = []
         for row in rows:
@@ -282,6 +282,7 @@ class WorldDatabase(Database):
             blocked = unit.get("route_blocked",False)
             out.append({**dict(row), "stage":unit["status"].removeprefix("DEPLETED_").lower(),
                         "detail":"Observed graph-world lifecycle", "stage_left_min":None if blocked else unit["phases"][0]["remaining"],
+                        "lat":unit["lat"], "lon":unit["lon"], "route":unit["phases"][0].get("route",{}).get("path",[]),
                         "back_in_service_min":None if blocked else unit["total_depletion_ticks_remaining"]})
         return out
 

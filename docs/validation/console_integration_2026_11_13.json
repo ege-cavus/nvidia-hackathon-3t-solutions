@@ -1,0 +1,40 @@
+{
+  "kind": "LOCAL_CONSOLE_INTEGRATION_CHECK_NOT_A_MODEL_BENCHMARK",
+  "date": "2026-11-13",
+  "source_heads": {
+    "backend": "4bf9a0b",
+    "console": "498bfaf"
+  },
+  "browser": "Headless Microsoft Edge, 1440px viewport",
+  "checks": [
+    "Console boot with actual mock backend",
+    "Numeric incident selection and observed world detail",
+    "Scenario clock control",
+    "Canonical caller form with unknown counts/location preserved",
+    "No page JavaScript errors in the completed checks",
+    "Explicit localhost:3100 CORS preflight accepted"
+  ],
+  "routing_check": {
+    "mode": "MOCK_AGENTS_REAL_CACHED_MINILM_REAL_OSM",
+    "reports": 4,
+    "before_seconds": 88.89,
+    "after_seconds": 23.06,
+    "allocation_counts_before": [
+      8,
+      4,
+      4,
+      10
+    ],
+    "allocation_counts_after": [
+      8,
+      4,
+      4,
+      10
+    ]
+  },
+  "notes": [
+    "Timing is a single local comparison; no general performance claim.",
+    "The first 90-second browser dispatch wait timed out before the routing optimisation; backend still completed.",
+    "Full screenshots and raw payloads stay under ignored demo_output/console_review."
+  ]
+}

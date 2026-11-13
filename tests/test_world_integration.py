@@ -128,6 +128,20 @@ def test_dashboard_api_uses_world_reservations_and_blocks_manual_release(tmp_pat
         summary=client.get("/ui/world").json()
         assert summary["enabled"] and summary["tick"]==1
         assert str(response["incident_id"]) in summary["outcomes"]
+        console=client.get("/api/state").json()
+        assert console["world"]["tick"]==1
+        assert console["incidents"][0]["address"]=="Sheaf St / Sheffield Station"
+        assert console["incidents"][0]["incident"]["incident_id"]==response["incident_id"]
+        assert console["incidents"][0]["world_outcome"]["resolution_success"] is False
+        held=next(u for u in console["fleet"] if u["unit_id"]==unit_id)
+        assert held["stage"]=="en_route"
+        assert held["back_in_service_min"]==unit["back_in_service_min"]-1
+        assert isinstance(held["lat"],float) and isinstance(held["lon"],float)
+        assert held["route"]
+        job=next(j for j in console["jobs"] if j["incident_id"]==response["incident_id"])
+        assert job["done"]
+        stream=client.get(f"/api/jobs/{job['job_id']}/events")
+        assert "event: ingested" in stream.text and "event: agent_done" in stream.text
 
 
 def test_only_explicitly_approved_media_is_loaded(integrated,tmp_path,monkeypatch):

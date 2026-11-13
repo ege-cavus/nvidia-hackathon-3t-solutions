@@ -82,6 +82,19 @@ containment/work separately from the dispatch assessment. Vehicle map positions
 come from the graph. The old arbitrary-incident demo controls are hidden because
 this mode uses authored graph-node bindings.
 
+The updated **999 Console** is also available at `/console`. It includes the
+animated agency network, solid vehicle icons, satellite-map option and hideable
+panels. Both surfaces use the same canonical backend and graph world. The console
+uses actual graph routes and vehicle positions in world mode, refreshes mutable
+assessments/outcomes, and receives authored-report jobs through the normal event
+stream. Its new-call form (outside authored world mode) submits caller JSON with
+unknowns preserved; category and severity come from intake triage.
+
+For a separately hosted dashboard, set UR_CORS_ORIGINS to the explicit frontend
+origins before starting the API (for example http://localhost:3100). Same-origin
+previews need no CORS setting. The Vercel proxy permits the compact `/ui/world`
+routes used by these controls. Neither surface bypasses lifecycle release locks.
+
 For automatic playback, set UR_WORLD_AUTORUN=1 and UR_TIME_SCALE=20 before startup.
 One simulated minute then advances every three real seconds. All model decision
 windows pause the world clock. Cosmos generation runs separately and never

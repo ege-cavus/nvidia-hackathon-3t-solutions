@@ -153,8 +153,14 @@ class SheffieldSim:
         for mapping in getattr(self, "location_mappings", {}).values():
             if (point["lat"], point["lon"]) == (mapping["lat"], mapping["lon"]):
                 return mapping["access_node"]
-        return min(self.graph.nodes, key=lambda n: _distance(point,
+        key = (point["lat"], point["lon"])
+        cache = self.__dict__.setdefault("_nearest_cache", {})
+        if key in cache and cache[key] in self.graph:
+            return cache[key]
+        node = min(self.graph.nodes, key=lambda n: _distance(point,
             {"lat": self.graph.nodes[n]["y"], "lon": self.graph.nodes[n]["x"]}))
+        cache[key] = node
+        return node
 
     def build_location_mappings(self):
         """Map team-supplied coordinates to streets in a metre-based projection.
@@ -409,10 +415,10 @@ class SheffieldSim:
                                 "Study-area boundary can truncate routes; expand if routes are unreachable"]}
 
     def _route(self, start, end, excluded_edges=()):
-        graph = self.graph.copy()
-        for edge in list(self.state["blocked_edges"]) + list(excluded_edges):
-            if len(edge) == 3 and graph.has_edge(*edge):
-                graph.remove_edge(*edge)
+        blocked = {tuple(edge) for edge in list(self.state["blocked_edges"]) + list(excluded_edges) if len(edge) == 3}
+        # A filtered view excludes closures without copying the entire city for
+        # every candidate vehicle/route. Shortest-path queries only read it.
+        graph = nx.subgraph_view(self.graph, filter_edge=lambda u,v,k:(u,v,k) not in blocked) if blocked else self.graph
         a, b = self._nearest(start), self._nearest(end)
         path = nx.shortest_path(graph, a, b, weight="travel_time")
         seconds = 0.0

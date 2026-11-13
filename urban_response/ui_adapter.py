@@ -396,7 +396,10 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         if world is None or world.inflight:
             raise WorldConflict("Authored world is disabled or waiting for a model decision")
         async def event(case_id,name,payload):
-            state["feed"].on_job_event(case_id,name,payload)
+            if state.get("world_event"):
+                await state["world_event"](case_id,name,payload)
+            else:
+                state["feed"].on_job_event(case_id,name,payload)
         await world.dispatch_due(state["orch"],event)
         return world_summary()
 

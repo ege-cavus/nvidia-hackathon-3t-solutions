@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
         jobs={},
         feed=EventFeed(),
         world=db.graph_world,
+        world_event=_world_event,
     )
 
     async def sweeper():
@@ -95,6 +96,16 @@ async def world_conflict(request, error):
 
 async def _world_event(incident_id, name, payload):
     state["feed"].on_job_event(incident_id, name, payload)
+    job_id = f"world-{incident_id}"
+    now = asyncio.get_running_loop().time()
+    job = state["jobs"].setdefault(job_id, {"events":[], "done":False, "cond":asyncio.Condition(),
+        "incident_id":incident_id, "label":f"Authored report {incident_id}", "started_at":now})
+    async with job["cond"]:
+        job["events"].append({"event":name, "t":round(now-job["started_at"],2), "data":payload})
+        if name in ("completed","merged","error"):
+            job["done"] = True
+            job["outcome"] = "error" if name=="error" else "merged" if name=="merged" else "dispatched"
+        job["cond"].notify_all()
 
 
 @app.get("/world/state")
@@ -235,9 +246,21 @@ def console_state():
         by_type.setdefault(f["resource_type"], {}).setdefault(f["stage"], 0)
         by_type[f["resource_type"]][f["stage"]] += 1
     inventory = [r | {"out_by_stage": by_type.get(r["resource_type"], {})} for r in db.inventory()]
-    return {"incidents": db.incidents(), "inventory": inventory, "fleet": fleet, "personnel": db.personnel_inventory(),
+    world = state.get("world")
+    incidents = []
+    for row in db.incidents():
+        record = db.get_incident(row["incident_id"])
+        caller = record["incident"]
+        incidents.append({**row, "incident":caller, "triage":record["triage"],
+                          "address":caller["location"].get("address") or caller["location"].get("landmark") or row["place"],
+                          "district":"", "description":caller["description"],
+                          "world_outcome":({"status":world.state["active_incidents"][world.case_nodes[row["incident_id"]]]["status"],
+                              **world.evaluate_response(world.case_nodes[row["incident_id"]])}
+                              if world is not None and row["incident_id"] in world.case_nodes else None)})
+    return {"incidents": incidents, "inventory": inventory, "fleet": fleet, "personnel": db.personnel_inventory(),
             "stations": db.stations(), "jobs": jobs[-30:],
             "jobs_running": sum(1 for j in state["jobs"].values() if not j["done"]),
+            "world":({"enabled":True, "tick":world.state["tick"], "inflight":world.inflight} if world is not None else {"enabled":False}),
             "time_scale": float(os.getenv("UR_TIME_SCALE", "1"))}
 
 
