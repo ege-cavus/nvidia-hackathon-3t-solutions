@@ -80,3 +80,19 @@ playable UI is pending. See [GAME_ARCHITECTURE.md](GAME_ARCHITECTURE.md) and
 [issue #6](https://github.com/ege-cavus/nvidia-hackathon-3t-solutions/issues/6).
 The proposed next step is four incident profiles with type-specific stages,
 while retaining the current flood/fire/trauma hazard categories for compatibility.
+
+## Authored reports: new integration pipeline
+
+See [REPORT_PIPELINE.md](REPORT_PIPELINE.md) for schema-valid sample reports,
+authored graph spread, per-node report creation and observed response outcomes.
+Run from this checkout after installing dependencies and caching the OSM graph:
+
+```powershell
+python report_world.py --ticks 6 --output demo_output/uncontrolled
+python report_world.py --ticks 60 --scripted-response --output demo_output/responded
+```
+
+The first emits the authored secondary-fire report at tick 6; the second uses a
+scripted smoke-test response to contain the source and prevent that report.
+The runner exports Qwen-ready report/media observations separately from evaluator
+rules. It is not yet wired into the legacy Streamlit/Ollama adapters.

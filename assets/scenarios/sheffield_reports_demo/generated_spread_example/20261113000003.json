@@ -1,0 +1,43 @@
+{
+  "incident_id": 20261113000003,
+  "received_at": "2026-11-13T09:00:00Z",
+  "channel": "112",
+  "caller": {
+    "name": null,
+    "phone": null,
+    "relationship": "witness",
+    "on_scene": true
+  },
+  "location": {
+    "landmark": "Bernard Rd / Sheffield Parkway",
+    "lat": 53.3805,
+    "lon": -1.445,
+    "location_source": "caller_stated",
+    "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+  },
+  "description": "SYNTHETIC DEMO: A caller reports a two-car collision near the camera location. One occupant appears injured but conscious. Traffic is obstructed.",
+  "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+  "casualties_reported": 1,
+  "people_trapped_reported": 0,
+  "patients": [],
+  "hazards_reported": [
+    "collision",
+    "road obstructed"
+  ],
+  "weapons_mentioned": null,
+  "persons_of_interest": [],
+  "vehicles": [
+    {
+      "type": "car",
+      "description": "First vehicle; other details not provided.",
+      "registration": null,
+      "occupants": null
+    },
+    {
+      "type": "car",
+      "description": "Second vehicle; other details not provided.",
+      "registration": null,
+      "occupants": null
+    }
+  ]
+}

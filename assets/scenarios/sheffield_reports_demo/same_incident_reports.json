@@ -1,0 +1,430 @@
+{
+  "bundle_type": "FOLLOW_UP_SAME_INCIDENT",
+  "canonical_incident_id": 20261113000001,
+  "node_id": "CAM_01",
+  "provenance": "Twelve authored synthetic observations of one incident; IDs identify the same canonical incident. Unique observation IDs are sidecar metadata, not new incident IDs.",
+  "reports": [
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:00:15Z",
+      "channel": "999",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "passer_by",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Smoke is visible above a small storage area beside the station. I can see flickering flames, but not the inside.",
+      "caller_reported_severity": "Smoke appears substantial; extent unknown.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:00:30Z",
+      "channel": "112",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "witness",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: There seems to be a fire in an exterior storage area near Sheffield Station. Dark smoke is drifting across my view.",
+      "caller_reported_severity": "Urgent concern; not independently verified.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:00:45Z",
+      "channel": "app",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "third_party",
+        "on_scene": false
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Reporting the same smoke near the station. A small area appears to be burning; the number of people nearby is unclear.",
+      "caller_reported_severity": "Looks small from this viewpoint; uncertain.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:01:00Z",
+      "channel": "text",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "resident",
+        "on_scene": false
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: I can see smoke rising from near the station buildings. It looks like a small outside fire, but I cannot judge its size.",
+      "caller_reported_severity": "Smoke appears substantial; extent unknown.",
+      "casualties_reported": null,
+      "people_trapped_reported": 0,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:01:15Z",
+      "channel": "999",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "passer_by",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Flames and smoke are coming from a storage area near the station approach. I am watching from a distance.",
+      "caller_reported_severity": "Urgent concern; not independently verified.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:01:30Z",
+      "channel": "app",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "witness",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Smoke is obscuring part of the station-side storage area. I cannot confirm whether anyone is inside.",
+      "caller_reported_severity": "Looks small from this viewpoint; uncertain.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:01:45Z",
+      "channel": "112",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "third_party",
+        "on_scene": false
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: I am calling about the station fire already being reported. There is a visible plume and intermittent flames.",
+      "caller_reported_severity": "Smoke appears substantial; extent unknown.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:02:00Z",
+      "channel": "text",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "witness",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: I can see a small fire near an exterior storage area by Sheffield Station. I have not seen anyone trapped.",
+      "caller_reported_severity": "Urgent concern; not independently verified.",
+      "casualties_reported": null,
+      "people_trapped_reported": 0,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:02:15Z",
+      "channel": "999",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "passer_by",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: The smoke near Sheffield Station looks dark from where I am standing. I can still see flames at ground level.",
+      "caller_reported_severity": "Looks small from this viewpoint; uncertain.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:02:30Z",
+      "channel": "app",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "resident",
+        "on_scene": false
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: A fire appears to be burning beside the station. Buildings are blocking part of the view, so I cannot confirm casualties.",
+      "caller_reported_severity": "Smoke appears substantial; extent unknown.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:02:45Z",
+      "channel": "112",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "witness",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Reporting flames around the same exterior storage area near the station. I cannot tell how far the fire extends.",
+      "caller_reported_severity": "Urgent concern; not independently verified.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    },
+    {
+      "incident_id": 20261113000001,
+      "received_at": "2026-11-13T09:03:00Z",
+      "channel": "text",
+      "caller": {
+        "name": null,
+        "phone": null,
+        "relationship": "passer_by",
+        "on_scene": true
+      },
+      "location": {
+        "landmark": "Sheaf St / Sheffield Station",
+        "lat": 53.3782,
+        "lon": -1.4628,
+        "location_source": "caller_stated",
+        "location_notes": "Same authored station-fire incident; caller viewpoint and wording vary. No new world event is implied."
+      },
+      "description": "SYNTHETIC DEMO FOLLOW-UP: Smoke and flames are visible near the station storage area. I do not have a clear view of the people nearby.",
+      "caller_reported_severity": "Looks small from this viewpoint; uncertain.",
+      "casualties_reported": null,
+      "people_trapped_reported": null,
+      "patients": [],
+      "hazards_reported": [
+        "smoke",
+        "fire"
+      ],
+      "weapons_mentioned": null,
+      "persons_of_interest": [],
+      "vehicles": []
+    }
+  ],
+  "report_links": [
+    {
+      "report_index": 0,
+      "observation_id": "STATION_FIRE_CALL_01",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 1,
+      "observation_id": "STATION_FIRE_CALL_02",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 2,
+      "observation_id": "STATION_FIRE_CALL_03",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 3,
+      "observation_id": "STATION_FIRE_CALL_04",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 4,
+      "observation_id": "STATION_FIRE_CALL_05",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 5,
+      "observation_id": "STATION_FIRE_CALL_06",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 6,
+      "observation_id": "STATION_FIRE_CALL_07",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 7,
+      "observation_id": "STATION_FIRE_CALL_08",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 8,
+      "observation_id": "STATION_FIRE_CALL_09",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 9,
+      "observation_id": "STATION_FIRE_CALL_10",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 10,
+      "observation_id": "STATION_FIRE_CALL_11",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    },
+    {
+      "report_index": 11,
+      "observation_id": "STATION_FIRE_CALL_12",
+      "relationship": "FOLLOW_UP_SAME_INCIDENT"
+    }
+  ]
+}

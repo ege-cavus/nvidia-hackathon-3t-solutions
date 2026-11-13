@@ -1,0 +1,272 @@
+{
+  "scenario_id": "sheffield-authored-reports-v1",
+  "schema": "../../../schemas/incident.schema.json",
+  "base_time": "2026-11-13T09:00:00Z",
+  "tick_seconds": 60,
+  "provenance": "SYNTHETIC_DEMO_NOT_REAL_INCIDENTS; fixture IDs follow date-plus-sequence format, production IDs must be assigned by database",
+  "nodes": {
+    "CAM_01": {
+      "lat": 53.3782,
+      "lon": -1.4628,
+      "name": "Sheaf St / Sheffield Station",
+      "hazard": "fire",
+      "severity": 5,
+      "required_units": {
+        "FIRE": 1,
+        "POLICE": 1
+      },
+      "containment_work_ticks": 2,
+      "resolution_work_ticks": 5
+    },
+    "CAM_08": {
+      "lat": 53.3831,
+      "lon": -1.4589,
+      "name": "Park Square Roundabout",
+      "hazard": "flood",
+      "severity": 6,
+      "required_units": {
+        "FIRE": 1,
+        "POLICE": 1
+      },
+      "containment_work_ticks": 2,
+      "resolution_work_ticks": 5,
+      "road_blocked": true
+    },
+    "CAM_13": {
+      "lat": 53.3805,
+      "lon": -1.445,
+      "name": "Bernard Rd / Sheffield Parkway",
+      "hazard": "trauma",
+      "severity": 5,
+      "required_units": {
+        "AMBULANCE": 1,
+        "POLICE": 1
+      },
+      "containment_work_ticks": 2,
+      "resolution_work_ticks": 5,
+      "road_blocked": true
+    },
+    "CAM_21": {
+      "lat": 53.4141,
+      "lon": -1.4116,
+      "name": "Meadowhall Way",
+      "hazard": "trauma",
+      "severity": 7,
+      "required_units": {
+        "AMBULANCE": 1
+      },
+      "containment_work_ticks": 2,
+      "resolution_work_ticks": 5
+    },
+    "OSM_1952229758": {
+      "lat": 53.3795483,
+      "lon": -1.4623947,
+      "name": "Demo secondary-fire node near Sheffield Station (1952229758)",
+      "graph_node": 1952229758,
+      "hazard": "fire",
+      "severity": 4,
+      "required_units": {
+        "FIRE": 1
+      },
+      "containment_work_ticks": 2,
+      "resolution_work_ticks": 5
+    }
+  },
+  "initial_reports": [
+    {
+      "node_id": "CAM_01",
+      "report": {
+        "incident_id": 20261113000001,
+        "received_at": "2026-11-13T09:00:00Z",
+        "channel": "999",
+        "caller": {
+          "name": null,
+          "phone": null,
+          "relationship": "witness",
+          "on_scene": true
+        },
+        "location": {
+          "landmark": "Sheaf St / Sheffield Station",
+          "lat": 53.3782,
+          "lon": -1.4628,
+          "location_source": "caller_stated",
+          "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+        },
+        "description": "SYNTHETIC DEMO: A witness reports thick smoke and flames from a small exterior storage area near Sheffield Station. It is not clear whether anyone is inside.",
+        "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+        "casualties_reported": 0,
+        "people_trapped_reported": 0,
+        "patients": [],
+        "hazards_reported": [
+          "smoke",
+          "fire"
+        ],
+        "weapons_mentioned": null,
+        "persons_of_interest": [],
+        "vehicles": []
+      },
+      "at_tick": 0
+    },
+    {
+      "node_id": "CAM_08",
+      "report": {
+        "incident_id": 20261113000002,
+        "received_at": "2026-11-13T09:00:00Z",
+        "channel": "app",
+        "caller": {
+          "name": null,
+          "phone": null,
+          "relationship": "witness",
+          "on_scene": true
+        },
+        "location": {
+          "landmark": "Park Square Roundabout",
+          "lat": 53.3831,
+          "lon": -1.4589,
+          "location_source": "caller_stated",
+          "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+        },
+        "description": "SYNTHETIC DEMO: A passer-by reports standing water covering the Park Square approach and vehicles stopping before the water. One car may be stranded; occupants are not confirmed.",
+        "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+        "casualties_reported": null,
+        "people_trapped_reported": null,
+        "patients": [],
+        "hazards_reported": [
+          "standing water",
+          "road obstructed"
+        ],
+        "weapons_mentioned": null,
+        "persons_of_interest": [],
+        "vehicles": []
+      },
+      "at_tick": 0
+    },
+    {
+      "node_id": "CAM_13",
+      "report": {
+        "incident_id": 20261113000003,
+        "received_at": "2026-11-13T09:00:00Z",
+        "channel": "112",
+        "caller": {
+          "name": null,
+          "phone": null,
+          "relationship": "witness",
+          "on_scene": true
+        },
+        "location": {
+          "landmark": "Bernard Rd / Sheffield Parkway",
+          "lat": 53.3805,
+          "lon": -1.445,
+          "location_source": "caller_stated",
+          "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+        },
+        "description": "SYNTHETIC DEMO: A caller reports a two-car collision near the camera location. One occupant appears injured but conscious. Traffic is obstructed.",
+        "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+        "casualties_reported": 1,
+        "people_trapped_reported": 0,
+        "patients": [],
+        "hazards_reported": [
+          "collision",
+          "road obstructed"
+        ],
+        "weapons_mentioned": null,
+        "persons_of_interest": [],
+        "vehicles": [
+          {
+            "type": "car",
+            "description": "First vehicle; other details not provided.",
+            "registration": null,
+            "occupants": null
+          },
+          {
+            "type": "car",
+            "description": "Second vehicle; other details not provided.",
+            "registration": null,
+            "occupants": null
+          }
+        ]
+      },
+      "at_tick": 0
+    },
+    {
+      "node_id": "CAM_21",
+      "report": {
+        "incident_id": 20261113000004,
+        "received_at": "2026-11-13T09:00:00Z",
+        "channel": "999",
+        "caller": {
+          "name": null,
+          "phone": null,
+          "relationship": "witness",
+          "on_scene": true
+        },
+        "location": {
+          "landmark": "Meadowhall Way",
+          "lat": 53.4141,
+          "lon": -1.4116,
+          "location_source": "caller_stated",
+          "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+        },
+        "description": "SYNTHETIC DEMO: A passer-by reports an adult who has collapsed near Meadowhall Way. The person is reportedly breathing but not responding to speech.",
+        "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+        "casualties_reported": 1,
+        "people_trapped_reported": 0,
+        "patients": [
+          {
+            "approx_age": "adult",
+            "sex": "unknown",
+            "conscious": false,
+            "breathing": "normal",
+            "bleeding": null,
+            "notes": "Caller observation only; clinical condition unverified."
+          }
+        ],
+        "hazards_reported": [],
+        "weapons_mentioned": null,
+        "persons_of_interest": [],
+        "vehicles": []
+      },
+      "at_tick": 0
+    }
+  ],
+  "spread_rules": [
+    {
+      "rule_id": "station-fire-secondary-node",
+      "source_node": "CAM_01",
+      "target_node": "OSM_1952229758",
+      "delay_ticks": 6,
+      "partial_response_spread_multiplier": 0.5,
+      "mitigating_agencies": ["FIRE"],
+      "minimum_severity": 4,
+      "report_template": {
+        "channel": "alarm",
+        "caller": null,
+        "location": {
+          "landmark": "Demo secondary-fire node near Sheffield Station (1952229758)",
+          "lat": 53.3795483,
+          "lon": -1.4623947,
+          "location_source": "alarm_panel",
+          "location_notes": "Authored synthetic secondary-ignition location; road connectivity does not predict fire spread."
+        },
+        "description": "SYNTHETIC DEMO: a new smoke alarm reports smoke and a small secondary exterior fire at this node. The number of people nearby is unknown.",
+        "caller_reported_severity": "Alarm activation; scale not independently verified.",
+        "casualties_reported": null,
+        "people_trapped_reported": null,
+        "patients": [],
+        "hazards_reported": [
+          "smoke",
+          "fire"
+        ],
+        "weapons_mentioned": null,
+        "persons_of_interest": [],
+        "vehicles": []
+      }
+    }
+  ],
+  "notes": [
+    "Spread is an authored directed demo rule, not physical propagation inferred from a road graph.",
+    "Suitable on-scene resources slow uncontained spread to half speed; extra units give no additional speed or work bonus. Partial responses do not reduce severity or accumulate resolution work.",
+    "World evaluation configuration must not be included in the Qwen observation.",
+    "No automatic random incident spawning or legacy intensity escalation in the report-driven runner."
+  ]
+}

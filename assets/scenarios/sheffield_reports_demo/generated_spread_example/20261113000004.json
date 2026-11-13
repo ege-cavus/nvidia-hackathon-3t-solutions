@@ -1,0 +1,36 @@
+{
+  "incident_id": 20261113000004,
+  "received_at": "2026-11-13T09:00:00Z",
+  "channel": "999",
+  "caller": {
+    "name": null,
+    "phone": null,
+    "relationship": "witness",
+    "on_scene": true
+  },
+  "location": {
+    "landmark": "Meadowhall Way",
+    "lat": 53.4141,
+    "lon": -1.4116,
+    "location_source": "caller_stated",
+    "location_notes": "Synthetic hackathon scenario; supplied camera coordinates, not a verified emergency."
+  },
+  "description": "SYNTHETIC DEMO: A passer-by reports an adult who has collapsed near Meadowhall Way. The person is reportedly breathing but not responding to speech.",
+  "caller_reported_severity": "Caller describes an urgent situation; not independently verified.",
+  "casualties_reported": 1,
+  "people_trapped_reported": 0,
+  "patients": [
+    {
+      "approx_age": "adult",
+      "sex": "unknown",
+      "conscious": false,
+      "breathing": "normal",
+      "bleeding": null,
+      "notes": "Caller observation only; clinical condition unverified."
+    }
+  ],
+  "hazards_reported": [],
+  "weapons_mentioned": null,
+  "persons_of_interest": [],
+  "vehicles": []
+}

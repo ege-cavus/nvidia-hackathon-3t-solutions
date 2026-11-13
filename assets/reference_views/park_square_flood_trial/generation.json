@@ -1,0 +1,54 @@
+{
+  "incident_id": 20261113000002,
+  "status": "GENERATED_PENDING_REVIEW",
+  "provenance": "SYNTHETIC_REFERENCE_CONDITIONED_NOT_REAL_CCTV",
+  "reference_image": "assets/reference_views/park_square.jpg",
+  "reference_sha256": "b0711e7ea8d846e9bef7bf7a5a3f8fe5cd98c6247511439c5a6eb1ddc415216f",
+  "attribution": {
+    "creator": "Chris Morgan",
+    "source": "https://commons.wikimedia.org/wiki/File:Park_Square_roundabout_-_geograph.org.uk_-_6539765.jpg",
+    "license": "CC BY-SA 2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "changes": "Cosmos Nano image-to-video conditioning adds a fictional flood; extracted review frames are derivatives.",
+    "derivative_license": "CC BY-SA 2.0"
+  },
+  "request": {
+    "model_mode": "image2video",
+    "prompt": "Fixed elevated camera overlooking Park Square in Sheffield. The camera remains completely stationary. Preserve the existing buildings, pedestrian bridge, road layout and viewpoint. Over this short time-lapse, muddy flood water flows in from the bottom of the picture and spreads across the foreground traffic lanes, forming broad shallow pools with visible ripples and reflections. By the end the foreground carriageway is clearly covered in standing brown water while the buildings and footbridge remain unchanged. Daylight, realistic water movement. Synthetic emergency training scenario.",
+    "resolution": "480_16_9",
+    "num_frames": 49,
+    "seed": 42,
+    "fps": 12
+  },
+  "video": "20261113000002-reference.mp4",
+  "video_sha256": "52e4ad8b3cadc3b05910cf1b434ed6d3f6fd2972d387b9a930f65b2f542b8e9b",
+  "bytes": 4124377,
+  "frames": [
+    "20261113000002-reference-frame-000.jpg",
+    "20261113000002-reference-frame-024.jpg",
+    "20261113000002-reference-frame-048.jpg"
+  ],
+  "review_criteria": [
+    "The Park Square buildings, bridge and road layout remain recognisable.",
+    "Standing water is clearly visible across foreground carriageway lanes in a later frame.",
+    "The camera remains fixed without major geometric distortion.",
+    "A stranded car and occupants are not confirmed by this trial; caller claims remain unverified."
+  ],
+  "review": {
+    "status": "SMOKE_TEST_ONLY_WITH_LIMITATIONS",
+    "approved_for_qwen": false,
+    "visible_water": true,
+    "recognisable_location": true,
+    "fixed_camera_pass": false,
+    "notes": [
+      "Water is clearly visible in final foreground lanes.",
+      "Park Square bridge/buildings remain recognisable.",
+      "Camera zoom/drift and distorted road markings fail the fixed-camera criterion.",
+      "No stranded vehicle or occupants are confirmed.",
+      "Qwen recognised floodwater but the image-only result inferred unsupported water depth."
+    ],
+    "qwen_check": "qwen_review.json",
+    "approval_scope": "Experimental visual smoke check only; not approved as a validated incident asset."
+  },
+  "video_storage": "Local ignored demo_output/cosmos_reference/; MP4 is not committed."
+}

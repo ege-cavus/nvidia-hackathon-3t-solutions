@@ -8,3 +8,6 @@ __pycache__/
 
 *.egg-info/
 assets/*.graphml
+
+# Local report-run exports
+demo_output/
