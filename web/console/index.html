@@ -488,6 +488,15 @@ body.map-hidden .ag-row { margin-bottom: 0; }
 .agents { flex: none; }
 .agents svg { display: block; margin: 0 auto; width: 100%; max-height: 280px; }
 .rail .tabs.rtabs { justify-content: center; }
+
+/* splitter: the diagram shrinks behind the tabs when you drag the handle up */
+.agents { height: var(--agents-h, auto); overflow: hidden; display: flex; flex-direction: column; }
+.agents svg { flex: 1 1 auto; min-height: 0; }
+.rail[style*="--agents-h"] .agents svg { max-height: none; }
+.rail-split { flex: none; height: 12px; cursor: row-resize; display: grid; place-items: center; touch-action: none; border-bottom: 1px solid var(--line); }
+.rail-split::before { content: ""; width: 44px; height: 4px; border-radius: 99px; background: var(--line-2); transition: background 150ms; }
+.rail-split:hover::before, body.splitting .rail-split::before { background: var(--accent); }
+body.splitting { cursor: row-resize; user-select: none; }
 </style>
 </head>
 <body>
@@ -559,6 +568,7 @@ body.map-hidden .ag-row { margin-bottom: 0; }
         </svg>
         <p class="net-detail" id="netDetail" aria-live="polite"></p>
       </section>
+      <div class="rail-split" id="railSplit" title="Drag to resize the agents diagram; double-click to reset"></div>
       <section class="rail-tabs">
         <div class="tabs rtabs" role="tablist" id="railTabs"></div>
         <div class="pane" id="paneAgents"></div>
@@ -1890,10 +1900,29 @@ async function runGraphDemo() {
   }
 }
 
+async function resetDemo() {
+  const btn = $("btnDemo");
+  btn.disabled = true; btn.textContent = "Resetting…";
+  try {
+    // The backend refuses to reset while a pipeline is still finishing: wait for it, then reseed the
+    // city so every vehicle and crew member is back in service for the next run.
+    for (let i = 0; ; i++) {
+      try { await post("/api/reset"); break; }
+      catch (e) { if (i >= 40) throw e; btn.textContent = "Resetting… waiting for agents to finish"; await new Promise((r) => setTimeout(r, 1500)); }
+    }
+    clearDemoView();
+    INV.flash = {}; renderTicker.sig = "";
+    select(null, false);
+    await refreshState();
+  } catch (e) { toastError(`Reset failed: ${e.message}`); }
+  btn.dataset.state = ""; btn.title = "Run the demo: an earlier call is on scene, then three people report the same Park Hill fire";
+  btn.textContent = "▶ Run demo"; btn.disabled = false;
+}
 async function runDemo() {
   if (S.state?.world?.enabled) return runGraphDemo();
   const btn = $("btnDemo");
   if (btn.disabled) return;
+  if (btn.dataset.state === "done") return resetDemo();
   const names = Object.keys(S.bursts);
   if (!names.length) return toastError("No cluster scenario on this server.");
   btn.disabled = true;
@@ -1937,7 +1966,9 @@ async function runDemo() {
     const lead = mine.map((id) => JOBS[id]).find((j) => j && !j.events.some((e) => e.event === "merged"));
     if (lead) select(lead.incident_id, false);
     clearInterval(tick);
-    btn.textContent = `✓ Demo complete · ${fmt(Date.now() - t0)} · run again`;
+    btn.textContent = `↺  Reset  ·  done in ${fmt(Date.now() - t0)}`;
+    btn.title = "Clear the city and the board, ready for the next run";
+    btn.dataset.state = "done";
   } catch (e) {
     clearInterval(tick);
     toastError(`Demo stopped: ${e.message}`);
@@ -2114,6 +2145,22 @@ async function bootConsole() {
   setInterval(refreshState, 3000);                         // other operators' calls and returning units show up on their own
   setInterval(() => { renderConn(); renderList(); }, 1000);  // call timers and stage clocks
 }
+
+
+// ---- splitter between the agents diagram and the tabs below: drag up to give the cards more room ---- //
+(function railSplit() {
+  const rail = document.querySelector(".rail"), agents = document.querySelector(".agents"), bar = $("railSplit");
+  let start = null;
+  bar.addEventListener("pointerdown", (e) => { start = { y: e.clientY, h: agents.getBoundingClientRect().height }; bar.setPointerCapture(e.pointerId); document.body.classList.add("splitting"); e.preventDefault(); });
+  bar.addEventListener("pointermove", (e) => {
+    if (!start) return;
+    const max = rail.getBoundingClientRect().height - 140;
+    rail.style.setProperty("--agents-h", `${Math.max(0, Math.min(max, start.h + e.clientY - start.y))}px`);
+  });
+  const end = () => { start = null; document.body.classList.remove("splitting"); };
+  bar.addEventListener("pointerup", end); bar.addEventListener("pointercancel", end);
+  bar.addEventListener("dblclick", () => rail.style.removeProperty("--agents-h"));  // back to the default split
+})();
 
 // ---- phone brief (?brief=INC-…), kept from the original console ------------------------------- //
 async function bootBrief(id) {

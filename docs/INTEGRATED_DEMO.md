@@ -92,7 +92,7 @@ unknowns preserved; category and severity come from intake triage.
 
 The latest urban-response local console (8ff3975) is integrated on both `/console`
 and `web/console/`: compact pipeline steps, hover detail, live ticker, inventory
-changes and the hide-map control. The source branch and main remain unchanged.
+changes, the hide-map control, the rail splitter and the ↺ reset that reseeds full resources.
 For a fresh local Windows run after activating your environment:
 
 ```powershell

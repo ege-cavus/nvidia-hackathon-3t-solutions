@@ -1,6 +1,6 @@
 # SURU Console: Dispatch-Screen Review and Vercel ↔ DGX Spark Deployment
 
-**Scope:** the console in [urban_response/static/index.html](../urban_response/static/index.html), served by [urban_response/api.py](../urban_response/api.py). It replaces the Streamlit plan in [UI_BRIEFING.md](UI_BRIEFING.md) §7. That doc's feature list (map, success metric, filters, Resource DB, observability) still applies.
+**Scope:** the console in [urban_response/static/index.html](../../urban_response/static/index.html), served by [urban_response/api.py](../../urban_response/api.py). It replaces the Streamlit plan in [UI_BRIEFING.md](UI_BRIEFING.md) §7. That doc's feature list (map, success metric, filters, Resource DB, observability) still applies.
 
 - **Part A** reviews the console as a 999/911 dispatch screen and gives prioritised changes.
 - **Part B** explains how the site runs on Vercel while the models run on the DGX Spark on the LAN. That part is **built and tested**.
@@ -111,12 +111,12 @@ Keep the SSE event model, `textContent`-only rendering, the honest `fallback` ba
 
 | File | Purpose |
 |---|---|
-| [web/vercel.json](../web/vercel.json) | Vercel project: build step, `/backend/*` → proxy rewrite, 300 s function duration for SSE, security headers |
-| [web/api/proxy.js](../web/api/proxy.js) | Proxy function. Allow-lists the console's routes only (`/docs` etc. return 404), injects the bearer token, streams `text/event-stream`, and turns tunnel HTML error pages into `{"detail": "DGX backend unreachable…"}` |
-| [web/scripts/sync-console.mjs](../web/scripts/sync-console.mjs) | Build step: copies `urban_response/static/index.html` into `public/` (one source of truth) and writes `suru-config.js` pointing the page at `/backend` |
-| [urban_response/api.py](../urban_response/api.py) | Token gate (`UR_API_TOKEN`). Direct LAN/loopback clients are trusted, and anything arriving with tunnel/proxy forwarding headers needs the token. Also adds `/healthz` (unauthenticated, reveals nothing), `/suru-config.js` (empty base when served locally), and `/api/config` now reports real model names plus `auth_required` |
-| [urban_response/static/index.html](../urban_response/static/index.html) | All calls go through `API_BASE` (`""` locally, `/backend` on Vercel). Adds a backend-online/offline pill that re-checks every 10 s. The model label shows the real Qwen and Nemotron names |
-| [deploy/dgx/env.example](../deploy/dgx/env.example), [deploy/dgx/start.sh](../deploy/dgx/start.sh) | Spark config and launcher. It checks that both model servers answer `/models` before starting, and warns if the token is empty |
+| [web/vercel.json](../../web/vercel.json) | Vercel project: build step, `/backend/*` → proxy rewrite, 300 s function duration for SSE, security headers |
+| [web/api/proxy.js](../../web/api/proxy.js) | Proxy function. Allow-lists the console's routes only (`/docs` etc. return 404), injects the bearer token, streams `text/event-stream`, and turns tunnel HTML error pages into `{"detail": "DGX backend unreachable…"}` |
+| [web/scripts/sync-console.mjs](../../web/scripts/sync-console.mjs) | Build step: copies `urban_response/static/index.html` into `public/` (one source of truth) and writes `suru-config.js` pointing the page at `/backend` |
+| [urban_response/api.py](../../urban_response/api.py) | Token gate (`UR_API_TOKEN`). Direct LAN/loopback clients are trusted, and anything arriving with tunnel/proxy forwarding headers needs the token. Also adds `/healthz` (unauthenticated, reveals nothing), `/suru-config.js` (empty base when served locally), and `/api/config` now reports real model names plus `auth_required` |
+| [urban_response/static/index.html](../../urban_response/static/index.html) | All calls go through `API_BASE` (`""` locally, `/backend` on Vercel). Adds a backend-online/offline pill that re-checks every 10 s. The model label shows the real Qwen and Nemotron names |
+| [deploy/dgx/env.example](../../deploy/dgx/env.example), [deploy/dgx/start.sh](../../deploy/dgx/start.sh) | Spark config and launcher. It checks that both model servers answer `/models` before starting, and warns if the token is empty |
 
 **Verified locally:**
 - The token gate passes 7 cases: LAN direct allowed, tunnel without a token or with a bad token rejected (401), tunnel with the token allowed, `/healthz` open, and a public IP without a token rejected.

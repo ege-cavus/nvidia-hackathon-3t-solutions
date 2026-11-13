@@ -200,7 +200,7 @@ selecting any image for a report. A caller's possible stranded car/occupants
 remain unverified if absent from the image. This trial never updates the incident
 manifest or world state automatically.
 
-A completed [Park Square smoke check](assets/reference_views/park_square_flood_trial/README.md)
+A completed [Park Square smoke check](../assets/reference_views/park_square_flood_trial/README.md)
 includes three review frames, provenance and live Qwen results. Water is visible,
 but camera drift/geometry defects remain. Qwen detected flooding; its image-only
 answer inferred unsupported water depth. The image-plus-report answer kept the

@@ -85,7 +85,7 @@ MP4 files remain ignored. No model weights or live CCTV feeds are bundled.
 ## Future solo game architecture (issue #6)
 
 game_session.py is a shared integration-owned module, not part of a track lease.
-See GAME_ARCHITECTURE.md before wiring a human-versus-agents mode. Human controls
+See docs/GAME_ARCHITECTURE.md before wiring a human-versus-agents mode. Human controls
 and agents must use DispatchCommand/apply_command; world validation must never
 require a Qwen report. Model reports are hypotheses and must not overwrite world
 hazard/severity. Keep separate human/agent worlds with identical event tapes,
@@ -96,7 +96,7 @@ Track 4/Track 1; current severity logic is not yet capability-aware progression.
 
 ## Active report-driven integration path
 
-The authored-report pipeline is documented in REPORT_PIPELINE.md. report_world.py
+The authored-report pipeline is documented in docs/REPORT_PIPELINE.md. report_world.py
 is integration-owned; it reuses graph/resource/scoring helpers from Track 1.
 It does not run legacy random spawning or intensity escalation. Caller reports
 validate against schemas/incident.schema.json (the supplied jsonformal.txt).

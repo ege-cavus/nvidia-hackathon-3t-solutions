@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the SURU API on the DGX Spark. Model servers must already be running (see docs/CONSOLE_UPDATES.md §B3).
+# Start the SURU API on the DGX Spark. Model servers must already be running (see docs/DEPLOYMENT.md).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
