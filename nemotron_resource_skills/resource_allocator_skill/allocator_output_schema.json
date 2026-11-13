@@ -1,0 +1,14 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "title":"Conservative allocator proposal output (simulation)",
+  "type":"object","additionalProperties":false,
+  "required":["snapshot_id","status","allocations","resource_totals","review_flags","requires_human_review"],
+  "properties":{
+    "snapshot_id":{"type":"string"},
+    "status":{"enum":["proposed","input_invalid"]},
+    "allocations":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["cluster_id","service","resource_type","requested","approved","decision","rationale","reduction_reason","operationally_adequate"],"properties":{"cluster_id":{"type":"string"},"service":{"enum":["police","fire","ambulance"]},"resource_type":{"type":"string"},"requested":{"type":"integer","minimum":1},"approved":{"type":"integer","minimum":0},"decision":{"enum":["full","reduced","deferred","rejected"]},"rationale":{"type":"string"},"reduction_reason":{"type":["string","null"]},"operationally_adequate":{"type":["boolean","null"]}}}},
+    "resource_totals":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["service","resource_type","available","requested","approved","remaining","unmet"],"properties":{"service":{"enum":["police","fire","ambulance"]},"resource_type":{"type":"string"},"available":{"type":"integer","minimum":0},"requested":{"type":"integer","minimum":0},"approved":{"type":"integer","minimum":0},"remaining":{"type":"integer","minimum":0},"unmet":{"type":"integer","minimum":0}}}},
+    "review_flags":{"type":"array","items":{"type":"string"}},
+    "requires_human_review":{"const":true}
+  }
+}

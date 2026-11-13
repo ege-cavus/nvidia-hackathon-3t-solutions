@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resource allocator input",
+  "type": "object",
+  "required": [
+    "snapshot_id",
+    "events",
+    "resource_inventory",
+    "agent_proposals"
+  ],
+  "properties": {
+    "snapshot_id": {
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "cluster_id",
+          "summary"
+        ],
+        "properties": {
+          "cluster_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "resource_inventory": {
+      "type": "object",
+      "required": [
+        "snapshot_id",
+        "services"
+      ],
+      "properties": {
+        "snapshot_id": {
+          "type": "string"
+        },
+        "services": {
+          "type": "object",
+          "required": [
+            "police",
+            "fire",
+            "ambulance"
+          ],
+          "properties": {
+            "police": {
+              "type": "object",
+              "required": [
+                "resources"
+              ],
+              "properties": {
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "available",
+                      "total"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "total": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "fire": {
+              "type": "object",
+              "required": [
+                "resources"
+              ],
+              "properties": {
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "available",
+                      "total"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "total": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "ambulance": {
+              "type": "object",
+              "required": [
+                "resources"
+              ],
+              "properties": {
+                "resources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "available",
+                      "total"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "available": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "total": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "agent_proposals": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": [
+          "service",
+          "snapshot_id",
+          "proposals"
+        ],
+        "properties": {
+          "service": {
+            "enum": [
+              "police",
+              "fire",
+              "ambulance"
+            ]
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "cluster_id",
+                "resources_requested"
+              ],
+              "properties": {
+                "cluster_id": {
+                  "type": "string"
+                },
+                "resources_requested": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "quantity",
+                      "reason"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "reason": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}
