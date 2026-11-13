@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "web/index.html"
+        ],
+        "createdAt": "2026-11-13T13:17:49.032Z",
+        "reason": "Claude triage: .hw-legend i swatches use border-top to draw solid/dashed/dotted line-style samples in the highway legend, not a card accent"
+      }
+    ]
+  }
+}
