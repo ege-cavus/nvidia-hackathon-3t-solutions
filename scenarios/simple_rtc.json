@@ -1,0 +1,17 @@
+{
+  "received_at": "2026-11-13T14:02:11Z",
+  "channel": "999",
+  "caller": {"name": null, "phone": "07700 900111", "relationship": "witness", "on_scene": true},
+  "location": {"address": "Ecclesall Road, Sharrow", "landmark": "Junction with Hickmott Road", "lat": 53.3700, "lon": -1.4900,
+               "location_source": "caller_gps", "location_notes": null},
+  "description": "Car hit a cyclist at the junction of Ecclesall Road and Hickmott Road. Cyclist conscious but has a suspected broken leg. Driver uninjured. One lane blocked.",
+  "caller_reported_severity": "not life threatening",
+  "casualties_reported": 1,
+  "people_trapped_reported": 0,
+  "patients": [{"approx_age": "30s", "sex": "male", "conscious": true, "breathing": "normal", "bleeding": false, "notes": "suspected broken leg"}],
+  "hazards_reported": ["live traffic"],
+  "weapons_mentioned": false,
+  "persons_of_interest": [],
+  "vehicles": [{"type": "car", "description": "silver hatchback", "registration": "YK19 ABC", "occupants": 1},
+               {"type": "bicycle", "description": null, "registration": null, "occupants": 1}]
+}

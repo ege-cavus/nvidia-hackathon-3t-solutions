@@ -4,15 +4,37 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "suru"
-version = "0.1.0"
-description = "Sheffield Urban Response Unit hackathon digital twin"
+version = "0.2.0"
+description = "Sheffield Urban Response Unit: agent backend, report-driven graph world and command dashboard"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-  "osmnx", "networkx", "geopandas", "shapely", "scikit-learn",
-  "numpy", "jsonschema[format]>=4",
-  "openai", "ollama", "opencv-python-headless", "pillow", "pydantic",
+  "osmnx", "networkx", "geopandas", "shapely", "scikit-learn>=1.4",
+  "numpy>=1.26", "jsonschema[format]>=4",
+  "openai>=1.40", "ollama", "opencv-python-headless", "pillow", "pydantic>=2.7",
   "streamlit", "pydeck", "plotly", "pandas", "psutil",
+  "fastapi>=0.115", "uvicorn>=0.30", "sentence-transformers>=3",
 ]
 
+[project.scripts]
+urban-response = "urban_response.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27"]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27"]
+
 [tool.setuptools]
-py-modules = ["state_schema", "cosmos_client", "cosmos_reference", "response_benchmarks", "report_world", "game_session", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets"]
+py-modules = ["state_schema", "cosmos_client", "cosmos_reference", "response_benchmarks", "report_world", "game_session", "sheffield_sim", "knowledge_base", "agent_orchestrator", "app", "generate_assets", "incident_cluster_handoff"]
+
+[tool.setuptools.packages.find]
+include = ["urban_response*"]
+
+[tool.setuptools.package-data]
+urban_response = ["static/*.html"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]

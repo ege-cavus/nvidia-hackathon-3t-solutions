@@ -1,0 +1,44 @@
+[
+  {
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900301", "relationship": "resident", "on_scene": true},
+    "location": {"address": "Park Hill, South Street", "landmark": "Park Hill flats", "lat": 53.3800, "lon": -1.4610, "location_source": "caller_gps"},
+    "description": "Flats on fire at Park Hill, smoke coming out of the fourth floor windows. People shouting from a balcony.",
+    "caller_reported_severity": "serious", "casualties_reported": 1, "people_trapped_reported": 2,
+    "patients": [], "hazards_reported": ["smoke"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
+  },
+  {
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900302", "relationship": "passer_by", "on_scene": true},
+    "location": {"address": "Duke Street, Park Hill", "landmark": null, "lat": 53.3793, "lon": -1.4622, "location_source": "caller_gps"},
+    "description": "Big fire in the Park Hill flats, I can see flames from Duke Street. Two people on a balcony.",
+    "caller_reported_severity": null, "casualties_reported": null, "people_trapped_reported": 2,
+    "patients": [], "hazards_reported": ["smoke"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
+  },
+  {
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900303", "relationship": "passer_by", "on_scene": false},
+    "location": {"address": "Sheaf Street", "landmark": "near the station", "lat": 53.3806, "lon": -1.4598, "location_source": "caller_gps"},
+    "description": "Smoke pouring from the Park Hill block near the station, fourth floor alight.",
+    "caller_reported_severity": "huge fire", "casualties_reported": null, "people_trapped_reported": null,
+    "patients": [], "hazards_reported": ["smoke"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
+  },
+  {
+    "channel": "text",
+    "caller": {"name": null, "phone": "07700 900304", "relationship": "resident", "on_scene": true},
+    "location": {"address": null, "landmark": "Park Hill flats", "lat": null, "lon": null, "location_source": "caller_stated"},
+    "description": "Fire in our block at Park Hill, smoke in the stairwell, we have left the building.",
+    "caller_reported_severity": null, "casualties_reported": 0, "people_trapped_reported": null,
+    "patients": [], "hazards_reported": ["smoke"], "weapons_mentioned": false, "persons_of_interest": [], "vehicles": []
+  },
+  {
+    "channel": "999",
+    "caller": {"name": null, "phone": "07700 900305", "relationship": "involved", "on_scene": true},
+    "location": {"address": "Duke Street / Talbot Street", "landmark": null, "lat": 53.3776, "lon": -1.4645, "location_source": "caller_gps"},
+    "description": "Car swerved to avoid a fire engine and hit a lamp post at the bottom of Duke Street. Driver dazed, conscious.",
+    "caller_reported_severity": "minor", "casualties_reported": 1, "people_trapped_reported": 0,
+    "patients": [{"approx_age": "40s", "sex": "male", "conscious": true, "breathing": "normal", "bleeding": false, "notes": "dazed"}],
+    "hazards_reported": ["live traffic"], "weapons_mentioned": false, "persons_of_interest": [],
+    "vehicles": [{"type": "car", "description": "red saloon", "registration": "YD68 PQR", "occupants": 1}]
+  }
+]

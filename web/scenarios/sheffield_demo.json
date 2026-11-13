@@ -1,0 +1,12 @@
+[
+  { "category": "rtc", "severity": 3, "district": "Darnall", "address": "Staniforth Road / Main Road", "lat": 53.3859, "lon": -1.4212,
+    "description": "Two-vehicle collision; one person trapped; fuel on the carriageway.", "casualties": 3, "trapped": 1, "hazards": ["fuel spill"] },
+  { "category": "firearms", "severity": 4, "district": "Burngreave", "address": "Spital Hill", "lat": 53.3912, "lon": -1.4578,
+    "description": "Man seen with a handgun outside a shop; no shots heard.", "casualties": 0, "trapped": 0, "hazards": [], "weapons": "handgun" },
+  { "category": "high_rise_fire", "severity": 5, "district": "Broomhall", "address": "Hanover Way tower block, 9th floor", "lat": 53.3735, "lon": -1.4835,
+    "description": "Fire on the 9th floor, persons reported, smoke in the stairwell.", "casualties": 2, "trapped": 4, "hazards": ["smoke", "falling glass"] },
+  { "category": "hazmat", "severity": 4, "district": "Tinsley", "address": "Sheffield Road industrial unit", "lat": 53.4075, "lon": -1.4035,
+    "description": "Chemical leak from a storage tank; strong odour; staff evacuated.", "casualties": 1, "trapped": 0, "hazards": ["chlorine"] },
+  { "category": "medical", "severity": 2, "district": "Hillsborough", "address": "Middlewood Road", "lat": 53.4010, "lon": -1.5000,
+    "description": "Elderly man collapsed in the street; conscious and breathing.", "casualties": 1, "trapped": 0, "hazards": [] }
+]
