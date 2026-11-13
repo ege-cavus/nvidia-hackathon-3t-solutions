@@ -778,13 +778,19 @@ const visible = (inc) => UI.chips.size === 0 || UI.chips.has(chipOf(inc.category
 
 // ---- backend polling ------------------------------------------------------------------------- //
 async function refreshState() {
+  const epoch = UI.runEpoch || 0;
   try {
-    S.state = await api("/api/state");
+    const current = await api("/api/state");
+    if (epoch !== (UI.runEpoch || 0)) return;
+    S.state = current;
     S.online = true; S.lastSeen = Date.now();
     // Assessment and observed world outcomes can arrive after the initial commit.
     const missing = incidents().filter((i) => i.latest_response_id &&
       (!RESP[i.latest_response_id]?.evaluation || i.status !== "closed" || S.state.world?.enabled)).map((i) => i.latest_response_id);
-    await Promise.all(missing.map((id) => api(`/responses/${id}`).then((r) => { RESP[id] = r; }).catch(() => {})));
+    await Promise.all(missing.map((id) => api(`/responses/${id}`).then((r) => {
+      if (epoch === (UI.runEpoch || 0)) RESP[id] = r;
+    }).catch(() => {})));
+    if (epoch !== (UI.runEpoch || 0)) return;
     // Join pipeline runs started by anyone (another screen, the CLI burst); replay finished ones quietly.
     for (const j of S.state.jobs.slice(-12)) {
       if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, j.done);
@@ -819,6 +825,7 @@ const STAGES = [["ingested", "Call received, duplicate check"], ["routed", "Qwen
 function subscribe(jobId, incidentId, replay) {
   const job = JOBS[jobId] = { job_id: jobId, incident_id: incidentId, events: [], queue: [], stage: "Starting", done: false, replay, startedAt: Date.now(), pumping: false };
   const es = new EventSource(`${API_BASE}/api/jobs/${jobId}/events`);
+  job.source = es;
   for (const name of EVENT_NAMES) es.addEventListener(name, (m) => { if (!m.data) return; job.queue.push(JSON.parse(m.data)); pump(job); });
   es.addEventListener("end", () => { es.close(); job.streamEnded = true; pump(job); });
   es.onerror = () => { es.close(); job.streamEnded = true; pump(job); };
@@ -829,6 +836,7 @@ function subscribe(jobId, incidentId, replay) {
 function pump(job) {
   if (job.pumping) return;
   const next = () => {
+    if (job.cancelled) { job.pumping = false; return; }
     if (!job.queue.length) { job.pumping = false; if (job.streamEnded) { job.done = true; renderAll(); } return; }
     job.pumping = true;
     apply(job, job.queue.shift());
@@ -1847,7 +1855,43 @@ async function startRun(incident) {
 // seconds apart. MiniLM + Qwen merge the duplicates, so only ONE incident goes through Nemotron A1-A3 and CR.
 // Fast (one pipeline run) and it never exhausts the city. Progress + elapsed time on the button.
 const CLUSTER_CALLS = 3;  // the first three Park Hill reports: same fire, different callers
+function clearDemoView() {
+  UI.runEpoch = (UI.runEpoch || 0) + 1;
+  for (const [id,job] of Object.entries(JOBS)) {
+    job.cancelled = true; job.queue.length = 0; job.source?.close(); delete JOBS[id];
+  }
+  for (const cache of [CASES,RESP]) for (const id of Object.keys(cache)) delete cache[id];
+  FEED.length = 0;
+  UI.selected = null; UI.brief = null; UI.railTab = "agents"; UI.netNode = null;
+  railSig = ""; drawerSig = ""; netSig = ""; renderStory.sig = "";
+  TICK.queue.length = 0; TICK.shown = null; TICK.seen.clear(); TICK.focus = null;
+}
+
+async function runGraphDemo() {
+  if (UI.worldDemoRunning || S.state.world.inflight) return;
+  UI.worldDemoRunning = true;
+  const btn = $("btnDemo");
+  btn.textContent = "Resetting graph…";
+  renderWorldControls();
+  try {
+    await post("/api/reset");
+    clearDemoView();
+    await refreshState();
+    btn.textContent = "Dispatching reports…";
+    await post("/ui/world/dispatch");
+    await refreshState();
+    const first = incidents().find((i) => i.status !== "merged");
+    if (first) select(first.incident_id,false);
+  } catch (error) {
+    toastError(`Demo stopped: ${error.message}`);
+  } finally {
+    UI.worldDemoRunning = false;
+    renderWorldControls();
+  }
+}
+
 async function runDemo() {
+  if (S.state?.world?.enabled) return runGraphDemo();
   const btn = $("btnDemo");
   if (btn.disabled) return;
   const names = Object.keys(S.bursts);
@@ -1859,14 +1903,7 @@ async function runDemo() {
   const tick = setInterval(() => { btn.textContent = `${label} · ${fmt(Date.now() - t0)}`; }, 500);
   try {
     await post("/api/reset");
-    for (const k of Object.keys(JOBS)) delete JOBS[k];
-    FEED.length = 0; select(null, false);
-    UI.railTab = "agents"; UI.netNode = null; railSig = ""; drawerSig = ""; renderStory.sig = "";
-    // Incident and response ids restart after a reset: drop everything cached under the old ids.
-    for (const k of Object.keys(CASES)) delete CASES[k];
-    for (const k of Object.keys(RESP)) delete RESP[k];
-    UI.brief = null;
-    TICK.queue.length = 0; TICK.shown = null; for (const f of FEED) TICK.seen.add(f.id);
+    clearDemoView();
     await refreshState();
     // An earlier call is already tying up crews, so the cluster is not handled from a full city.
     const earlier = S.scenarios.find((x) => /9th floor|Broomhall/i.test(x.description || "")) || S.scenarios[3];
@@ -1930,14 +1967,19 @@ function renderAll() {
 
 function renderWorldControls() {
   const world=S.state?.world, enabled=!!world?.enabled;
-  for (const id of ["btnDemo","btnBurst","btnCall"]) $(id).hidden=enabled;
+  $("btnDemo").hidden=false;
+  for (const id of ["btnBurst","btnCall"]) $(id).hidden=enabled;
   for (const id of ["worldStatus","btnWorldDispatch","btnWorldAdvance"]) $(id).hidden=!enabled;
   $("btnWorldReassess").hidden=!enabled || world.outcome_mode!=="model";
   if (enabled) {
+    const busy = !!world.inflight || !!UI.worldDemoRunning;
+    $("btnDemo").disabled=busy;
+    $("btnDemo").title="Reset the graph scenario and dispatch its authored reports. Advance one minute to follow arrivals and response outcomes.";
+    if (!UI.worldDemoRunning) $("btnDemo").textContent="▶ Run demo";
     $("worldStatus").textContent=`Scenario minute ${world.tick}${world.inflight ? " ? agents assessing" : ""}`;
-    $("btnWorldDispatch").disabled=!!world.inflight;
-    $("btnWorldAdvance").disabled=!!world.inflight;
-    $("btnWorldReassess").disabled=!!world.inflight;
+    $("btnWorldDispatch").disabled=busy;
+    $("btnWorldAdvance").disabled=busy;
+    $("btnWorldReassess").disabled=busy;
     for (const button of $("modeSeg").querySelectorAll("button")) button.disabled=true;
   }
 }

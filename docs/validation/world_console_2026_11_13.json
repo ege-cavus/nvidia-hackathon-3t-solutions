@@ -34,5 +34,25 @@
     "tick": 5,
     "mode": "model",
     "projection_in_evidence": true
+  },
+  "demo_button": {
+    "preview": "http://localhost:8082/console",
+    "button_visible": true,
+    "two_restart_runs": [
+      {
+        "new_world": true,
+        "cases": 4,
+        "tick": 0
+      },
+      {
+        "new_world": true,
+        "cases": 4,
+        "tick": 0
+      }
+    ],
+    "advance_worked": true,
+    "page_errors": [],
+    "server_errors": [],
+    "legacy_dispatch_posts": []
   }
 }

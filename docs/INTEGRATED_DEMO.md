@@ -104,6 +104,13 @@ Open http://localhost:8082/console, click **Dispatch pending reports**, then
 proposal path used by Qwen. Add `-Live` after configuring all model endpoints above,
 or `-Autorun` for an accelerated clock. `-Python` can select your venv executable.
 
+The console's **Run demo** button is available in world mode too: it resets the
+current demo and dispatches the four authored graph reports. **Dispatch pending
+reports** processes new reports without resetting. **Advance one minute** follows
+travel, work and turnaround. Outside world mode, Run demo retains the source
+branch's three-caller cluster demonstration. Restarting clears previous browser
+streams, animations and response caches before incident IDs are reused.
+
 For a separately hosted dashboard, set UR_CORS_ORIGINS to the explicit frontend
 origins before starting the API (for example http://localhost:3100). Same-origin
 previews need no CORS setting. The Vercel proxy permits the compact `/ui/world`
