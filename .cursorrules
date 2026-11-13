@@ -125,3 +125,23 @@ World mode uses UR_WORLD_SCENARIO and a fresh demo DB, pauses ticks during model
 decisions, and can accelerate with UR_TIME_SCALE/UR_WORLD_AUTORUN. Only explicitly
 approved_media scenario assets are sent to vision. Preserve both backend and
 legacy test suites. Do not reinstate independent wall-clock release in world mode.
+
+## Validated Qwen outcome authority (integration-owned)
+
+The user authorised post-dispatch model effects on integrate/final-demo. In the
+active backend, OutcomeProposal (urban_response/outcomes.py) and its validator
+(urban_response/outcome_world.py) are the only model-to-world effect boundary.
+Proposals name the incident/node, current world version/tick and unique ID.
+Only observed typed on-scene capabilities over a complete working minute permit
+one work credit; extra resources give no bonus. Accepted credits change severity,
+containment and resolution under configurable game thresholds. The model may
+defer work; malformed, contradictory, stale or replayed replies cannot mutate
+the graph. Log accepted/rejected proposals with evidence in world_outcomes.
+
+Reassess after dispatch, changed attendance or follow-up observations, and working
+ticks. Apply effects before same-tick spread. Keep model windows paused; preserve
+return/hospital/cooldown locks. No fresh post-dispatch pixels are assumed. Caller
+claims never directly rewrite world truth. The earlier prohibition on raw model
+hazard/severity overwrites still applies; validated bounded work effects are the
+authorised exception in this integration. Legacy/solo-game worlds retain their
+deterministic policy; a future match must use one policy for both competitors.

@@ -1,7 +1,7 @@
 """Opt-in authored-report graph world using the backend's concrete fleet.
 
 The world owns movement, incident outcomes and release. SQLite owns reservations
-and crew identities. Model evaluation is an assessment, never a release command.
+and crew identities. Validated outcome proposals affect work; never release locks.
 """
 from collections import Counter
 import base64
@@ -18,16 +18,18 @@ from .db import Database, time_scale
 from .resources import crew_for
 from .schemas import Incident, Triage
 from .config import ROOT
+from .outcome_world import OutcomeWorld
 
 
 class WorldConflict(ValueError):
     pass
 
 
-class GraphReportWorld(ReportDrivenWorld):
-    def __init__(self, db, scenario_path, graph=None):
-        super().__init__(scenario_path, graph=graph)
+class GraphReportWorld(OutcomeWorld, ReportDrivenWorld):
+    def __init__(self, db, scenario_path, graph=None, follow_up_path=None):
+        super().__init__(scenario_path, graph=graph, follow_up_path=follow_up_path)
         self.db = db
+        self._init_outcomes()
         self.inflight = 0
         self.pending_reports = {}
         self.case_nodes = {}
@@ -174,20 +176,42 @@ class GraphReportWorld(ReportDrivenWorld):
         finally:
             self._deployment = {}
         self.responses[case.incident_id] = response
+        self.world_version += 1
+
+    def _advance_unit(self, unit):
+        incident = self.state["active_incidents"].get(unit["assigned_cam"])
+        if (incident and incident["status"] != "RESOLVED" and unit.get("phases")
+                and unit["phases"][0]["status"] == "DEPLETED_ON_SCENE"
+                and unit["phases"][0]["remaining"] == 1):
+            unit["phases"][0]["remaining"] += 1
+            unit["on_scene_ticks"] += 1
+        super()._advance_unit(unit)
 
     def tick(self, spawn=False):
         if self.inflight:
             raise WorldConflict("Finish model decision windows before advancing the clock")
+        if self.outcome_mode != "rules":
+            raise WorldConflict("Model outcome mode requires asynchronous advance/reassessment")
         result = super().tick(spawn)
+        self.world_version += 1
+        self._sync_outcomes()
+        self.last_released = self.db.release_due()
+        return result
+
+    def _sync_outcomes(self):
         for case_id,response in self.responses.items():
             node = self.case_nodes[case_id]
             metrics = self.evaluate_response(node)
             if response.evaluation is not None:
                 response.evaluation.metrics["world_outcome"] = {"tick":self.state["tick"], **metrics,
                     "status": self.state["active_incidents"][node]["status"]}
+                latest = next((e for e in reversed(self.outcome_events) if e["evidence"]["incident_id"] == case_id),None)
+                if latest:
+                    response.evaluation.metrics["world_outcome"]["assessment"] = {
+                        k:latest[k] for k in ("accepted","executed_by")}
+                    response.evaluation.metrics["world_outcome"]["assessment"].update(
+                        proposal=latest.get("proposal"),error=latest.get("error"))
                 self.db.update_response(response)
-        self.last_released = self.db.release_due()
-        return result
 
     async def dispatch_due(self, orchestrator, on_event=None):
         results = []
@@ -207,10 +231,14 @@ class GraphReportWorld(ReportDrivenWorld):
                 results.append(result)
             finally:
                 self.pending_reports.pop(id(incident), None)
+        if self.outcome_mode == "model":
+            await self.reassess(orchestrator,on_event)
         return results
 
     def snapshot(self):
         return {"tick":self.state["tick"], "observed_at":self.timestamp(), "routing":self.state["routing"],
+                "outcome_mode":self.outcome_mode,"world_version":self.world_version,"run_id":self.run_id,
+                "outcome_events":self.outcome_events,
                 "incidents":self.state["active_incidents"], "units":self.state["resource_db"],
                 "response_events":self.response_events, "spread_events":self.spread_events,
                 "case_nodes":self.case_nodes, "inflight":self.inflight}
@@ -226,12 +254,14 @@ class WorldDatabase(Database):
             return super().record_response(incident, response)
         before = deepcopy(world.state)
         old_responses = dict(world.responses)
+        old_version = world.world_version
         try:
             world.commit_response(incident, response)
             super().record_response(incident, response)
         except Exception:
             world.state = before
             world.responses = old_responses
+            world.world_version = old_version
             raise
 
     def available_units(self, resource_type, lat, lon):

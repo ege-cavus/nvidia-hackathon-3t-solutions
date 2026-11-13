@@ -142,6 +142,16 @@ def test_dashboard_api_uses_world_reservations_and_blocks_manual_release(tmp_pat
         assert job["done"]
         stream=client.get(f"/api/jobs/{job['job_id']}/events")
         assert "event: ingested" in stream.text and "event: agent_done" in stream.text
+        outcome_job=next(j for j in console["jobs"] if j.get("outcome")=="world_updated")
+        outcome_stream=client.get(f"/api/jobs/{outcome_job['job_id']}/events")
+        assert "event: world_outcome" in outcome_stream.text
+        assert client.post("/world/reassess").status_code==200
+        old_run=client.get("/world/state").json()["run_id"]
+        assert client.post("/api/reset").status_code==200
+        assert client.get("/world/state").json()["run_id"]!=old_run
+        assert client.get("/world/state").json()["outcome_mode"]=="model"
+        assert client.post("/world/dispatch-due").status_code==200
+        assert all(e["accepted"] for e in client.get("/world/state").json()["outcome_events"])
 
 
 def test_only_explicitly_approved_media_is_loaded(integrated,tmp_path,monkeypatch):

@@ -6,7 +6,7 @@
 <title>SURU 999 Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&family=Newsreader:opsz,wght@6..72,500;6..72,700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@500&family=Newsreader:opsz,wght@6..72,500;6..72,700&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <style>
 /* One page, two views: the dispatch console, and the phone brief (?brief=INC-…).
@@ -351,6 +351,143 @@ body.hide-calls { --col-l: 0px; } body.hide-rail { --col-r: 0px; } body.hide-mat
   .legend { display: none; } .grid2, .grid4 { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { .stage::before, .mk-inc.live, .net-node .working { animation: none; } }
+
+/* ---- story makeover -------------------------------------------------------------------------- */
+:root { --r: 14px; --band-h: 122px; --col-r: 410px; }
+body { background: #050f14; }
+.topbar { background: transparent; border-bottom: 0; }
+.brand strong { font-family: "Space Grotesk", var(--font); font-weight: 700; font-size: 23px; letter-spacing: 0.01em; }
+.brand strong::after { content: ""; }
+.conn-dot { display: inline-flex; align-items: center; padding: 4px; }
+.conn-dot .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--mute); }
+.conn-dot.ok .dot { background: var(--ok); box-shadow: 0 0 0 4px rgba(76, 195, 138, 0.18), 0 0 12px rgba(76, 195, 138, 0.6); }
+.conn-dot.bad .dot { background: var(--bad); box-shadow: 0 0 0 4px rgba(255, 95, 97, 0.18); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.btn { border-radius: 11px; }
+.band { display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 10px; padding: 0 10px; background: transparent; border: 0; height: var(--band-h); }
+.story, .inv { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 10px 14px; min-width: 0; overflow: hidden; }
+.story { display: grid; grid-template-rows: auto 1fr; gap: 8px; }
+.story-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.story-inc { font-size: 15px; white-space: nowrap; }
+.narr { font-size: 15.5px; font-weight: 600; color: var(--ink-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.narr em { font-style: normal; color: var(--accent); font-weight: 800; }
+.story-score { font: 800 30px/1 "Space Grotesk", var(--font); } .story-score small { font-size: 13px; color: var(--mute); margin-left: 2px; }
+.steps { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; }
+.step { border-radius: 11px; padding: 6px 9px; background: var(--panel-2); border: 1px solid var(--line); min-width: 0; transition: background 300ms, border-color 300ms; }
+.step b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step span { display: block; font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step.done { border-color: rgba(52, 195, 176, 0.4); } .step.done b::before { content: "✓ "; color: var(--accent); } .step.done span { color: var(--ink-2); }
+.step.now { border-color: var(--accent); background: var(--accent-soft); animation: glow 1.4s ease-in-out infinite; }
+.step.now b { color: var(--accent); }
+.step.skip { opacity: 0.32; }
+@keyframes glow { 50% { box-shadow: 0 0 0 4px rgba(52, 195, 176, 0.18); } }
+.inv { display: grid; align-content: start; gap: 4px; }
+.inv-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.inv-row { display: grid; grid-template-columns: 102px 70px 44px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12.5px; }
+.inv-row .ag-name svg { width: 20px; height: 20px; }
+.inv-bar { height: 7px; border-radius: 4px; background: var(--line-2); overflow: hidden; } .inv-bar span { display: block; height: 100%; border-radius: 4px; transition: width 600ms; }
+.inv-num { color: var(--mute); } .inv-num b { color: var(--ink); font-size: 14px; }
+.inv-chips { display: flex; gap: 4px; overflow: hidden; white-space: nowrap; }
+.inv-chip { font-size: 11px; color: var(--ink-2); border: 1px solid var(--line-2); border-radius: 99px; padding: 0 7px; white-space: nowrap; transition: background 400ms; }
+.inv-chip b { color: var(--ink); } .inv-chip.out { border-color: var(--bad); color: var(--bad); }
+.inv-chip.flash { background: rgba(242, 179, 61, 0.14); border-color: var(--warn); }
+.inv-chip i { font-style: normal; font-weight: 800; margin-left: 4px; } .inv-chip i.down { color: var(--bad); } .inv-chip i.up { color: var(--ok); }
+.inv-crew { font-size: 11px; color: var(--mute); white-space: nowrap; }
+.wall { gap: 10px; padding: 10px; }
+.side, .centre, .rail { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); overflow: hidden; }
+.side { border-right: 1px solid var(--line); }
+.rail { border-left: 1px solid var(--line); }
+.mapwrap { border-radius: var(--r) var(--r) 0 0; overflow: hidden; }
+body:not(.has-selection) .mapwrap { border-radius: var(--r); }
+.drawer { border-top: 1px solid var(--line); }
+.card { border-radius: 12px; }
+.agents { border-bottom: 1px solid var(--line); }
+.rail-tabs { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.rtabs { margin: 0; padding: 0 12px; }
+.pane { overflow-y: auto; flex: 1; min-height: 0; padding: 10px 12px; }
+.log-pane { display: flex; flex-direction: column; padding: 0; }
+.log-pane .pane-sec { padding: 10px 14px 4px; } .log-pane .pane-sec:first-child { max-height: 42%; overflow-y: auto; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.log-pane .pane-sec .label { display: block; margin-bottom: 6px; }
+.ag-row { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 10px; padding: 10px 11px; border-radius: 13px; border: 1px solid var(--line); margin-bottom: 8px; background: var(--panel-2); cursor: pointer; transition: border-color 200ms, opacity 200ms; }
+.ag-row:hover { border-color: var(--line-2); }
+.ag-row.working { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(52, 195, 176, 0.12); }
+.ag-row.picked { border-color: var(--ink-2); }
+.ag-row.idle { opacity: 0.4; }
+.ag-ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; }
+.ag-ico svg { width: 22px; height: 22px; }
+.ag-top { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.ag-top b { font-size: 14px; }
+.ag-lead { font-size: 10.5px; font-weight: 800; color: var(--warn); border: 1px solid rgba(242, 179, 61, 0.5); border-radius: 99px; padding: 0 6px; }
+.ag-state { font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mute); }
+.ag-state.working { color: var(--accent); } .ag-state.done { color: var(--ok); }
+.ag-state.working::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-right: 5px; animation: blink 1s infinite; }
+.ag-what { font-size: 11.5px; color: var(--mute); }
+.ag-line { font-size: 13px; color: var(--ink); margin-top: 3px; }
+.ag-row .agent-card { margin-top: 8px; }
+.proc { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.proc-row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; padding: 7px 10px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel-2); }
+.proc-dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--line-2); color: var(--ink-2); }
+.proc-row.done .proc-dot { background: var(--accent); color: var(--accent-ink); }
+.proc-row.now { border-color: var(--accent); background: var(--accent-soft); } .proc-row.now .proc-dot { background: var(--accent); color: var(--accent-ink); animation: blink 1s infinite; }
+.proc-row.todo { opacity: 0.5; } .proc-row.skip { opacity: 0.3; }
+.proc-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .proc-top b { font-size: 13.5px; }
+.proc-who { font-size: 11.5px; color: var(--mute); } .proc-t { margin-left: auto; font: 500 11.5px var(--mono); color: var(--mute); }
+.proc-text { font-size: 13px; color: var(--ink-2); }
+.nlp-quote { border-left: 3px solid var(--accent); padding: 4px 10px; margin-bottom: 10px; } .nlp-quote p { font: 500 15px/1.4 var(--serif); color: var(--ink); margin-top: 3px; }
+.nlp-card { border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; margin-bottom: 10px; background: var(--panel-2); }
+.nlp-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.kv.nlp { display: grid; grid-template-columns: 110px 1fr; gap: 3px 10px; font-size: 13px; } .kv.nlp dt { color: var(--mute); } .kv.nlp dd { margin: 0; font-weight: 600; }
+.nlp-why { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+dialog { border-radius: 16px; }
+
+/* ---- round 2: compact steps, hover detail, ticker, hideable map ---- */
+:root { --band-h: 150px; }
+.band { position: relative; z-index: 20; }
+.story, .inv { overflow: visible; }
+.story { grid-template-rows: auto auto auto; gap: 8px; align-content: center; }
+.story-top { justify-content: center; }
+.narr { flex: 0 1 auto; }
+.story-score { margin-left: 12px; }
+.steps { gap: 0; position: relative; }
+.step { position: relative; display: flex; align-items: center; justify-content: center; text-align: center; padding: 7px 4px; border-radius: 0; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--panel-2); cursor: default; }
+.step:first-child { border-radius: 99px 0 0 99px; border-left: 1px solid var(--line); }
+.step:last-child { border-radius: 0 99px 99px 0; border-right: 1px solid var(--line); }
+.step + .step { border-left: 1px solid var(--line); }
+.step b { font-size: 12.5px; color: var(--mute); } .step b::before { content: none !important; }
+.step.done { background: rgba(52, 195, 176, 0.12); } .step.done b { color: var(--accent); }
+.step.now { background: var(--ok); animation: glow 1.4s ease-in-out infinite; } .step.now b { color: #04210f; font-weight: 800; }
+.step.skip { opacity: 0.3; }
+.hov { position: relative; }
+.hov .pop { display: none; position: absolute; top: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 50; width: max-content; max-width: 340px; text-align: left;
+  background: #0a1b23; border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); font-size: 13px; color: var(--ink); white-space: normal; }
+.hov:hover .pop { display: block; }
+.step:first-child .pop { left: 0; transform: none; } .step:last-child .pop { left: auto; right: 0; transform: none; }
+.pop-h { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+.pop p { color: var(--ink-2); line-height: 1.45; }
+.ticker { min-width: 0; }
+.tick-line { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13.5px; white-space: nowrap; overflow: hidden; animation: tickin 380ms ease-out; }
+.tick-line time { font: 500 12px var(--mono); color: var(--mute); }
+.tick-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; color: var(--ink); }
+.tick-line.final .tick-text { font-weight: 700; }
+.tick-tag { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-ink); background: var(--accent); border-radius: 99px; padding: 1px 9px; }
+@keyframes tickin { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.inv { align-content: center; gap: 6px; }
+.inv-row { grid-template-columns: 112px minmax(0, 1fr) 54px 36px; gap: 10px; cursor: default; padding: 2px 0; }
+.inv-row .pop { left: auto; right: 0; transform: none; top: calc(100% + 4px); min-width: 260px; }
+.inv-delta { font-weight: 800; font-size: 12.5px; } .inv-delta.down { color: var(--bad); } .inv-delta.up { color: var(--ok); }
+.pop-t { width: 100%; border-collapse: collapse; } .pop-t td { padding: 2px 4px; font-size: 12.5px; } .pop-t .num { text-align: right; }
+.pop-t tr.out td { color: var(--bad); } .pop-t td.down { color: var(--bad); font-weight: 800; } .pop-t td.up { color: var(--ok); font-weight: 800; }
+body.map-hidden .mapwrap { display: none; }
+body.map-hidden .wall { grid-template-columns: var(--col-l) minmax(0, 1fr) minmax(0, 1.25fr); }
+body.map-hidden .drawer { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; border-top: 0; }
+body.map-hidden .agents svg { max-height: 300px; }
+body.map-hidden #paneAgents { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-content: start; }
+body.map-hidden #paneAgents[hidden] { display: none; }
+body.map-hidden #paneAgents > div { display: contents; }
+body.map-hidden .ag-row { margin-bottom: 0; }
+.agents { flex: none; }
+.agents svg { display: block; margin: 0 auto; width: 100%; max-height: 280px; }
+.rail .tabs.rtabs { justify-content: center; }
 </style>
 </head>
 <body>
@@ -358,26 +495,28 @@ body.hide-calls { --col-l: 0px; } body.hide-rail { --col-r: 0px; } body.hide-mat
   <header class="topbar">
     <div class="brand"><strong>SURU 999</strong><span>Sheffield</span></div>
     <span class="clock" id="clock">--:--:--</span>
-    <span class="pill" id="conn" role="status" title="Backend connection and run mode (change mode in settings)"><i class="dot"></i><span>connecting…</span></span>
+    <span class="conn-dot" id="conn" role="status" title="connecting…"><i class="dot"></i><span class="sr">connecting…</span></span>
     <span class="pill sim" title="Simulated decisions for a hackathon demo. Not for operational use.">SIMULATION</span>
     <div class="actions">
-      <button class="btn primary" id="btnDemo" type="button">▶ Run demo</button>
-      <button class="btn" id="btnBurst" type="button" title="Several near-simultaneous calls about one incident">Burst calls</button>
+      <button class="btn primary" id="btnDemo" type="button" title="Reset the city; three callers report the same Park Hill fire. Duplicates merge, one incident runs through the live models on the DGX Spark">▶ Run demo</button>
+      <button class="btn" id="btnBurst" hidden type="button" title="Several near-simultaneous calls about one incident">Burst calls</button>
+      <button class="btn" id="btnMap" type="button" title="Hide the map to give the agents more room">Hide map</button>
       <button class="btn" id="btnCall" type="button" title="New call (N)">+ New call</button>
       <span id="worldStatus" class="small" role="status" hidden></span>
       <button class="btn primary" id="btnWorldDispatch" type="button" hidden>Dispatch pending reports</button>
       <button class="btn" id="btnWorldAdvance" type="button" hidden>Advance one minute</button>
+        <button class="btn" id="btnWorldReassess" type="button" hidden>Reassess response</button>
       <button class="btn" id="btnRes" type="button" title="Resources (R)">Resources</button>
-      <details class="view-menu" id="viewMenu"><summary class="btn" title="Show or hide panels">View</summary><div class="menu" id="viewList" role="group" aria-label="Panels"></div></details>
+      <details class="view-menu" id="viewMenu" hidden><summary class="btn" title="Show or hide panels">View</summary><div class="menu" id="viewList" role="group" aria-label="Panels"></div></details>
       <button class="btn" id="btnSettings" type="button" aria-label="Settings" title="Settings">⚙</button>
     </div>
   </header>
   <div class="alerts" id="alerts" role="region" aria-label="Needs action" hidden></div>
 
-  <section class="band" aria-label="Sheffield success matrix">
-    <button class="panel-hide" type="button" data-hide="matrix">Hide</button>
-    <div class="city" id="city" title="Response success: share of scored calls the evaluation rated fully resourced."></div>
-    <div class="matrix-wrap"><table class="matrix" id="matrix"></table></div>
+  <section class="band" aria-label="What is happening now">
+    <div class="story" id="story"></div>
+    <div class="inv" id="inv" aria-label="Live inventory"></div>
+    <div id="city" hidden></div><table id="matrix" hidden></table>
   </section>
 
   <main class="wall">
@@ -413,24 +552,29 @@ body.hide-calls { --col-l: 0px; } body.hide-rail { --col-r: 0px; } body.hide-mat
           <span class="label">Agents at work</span>
           <span class="inc" id="netTitle"></span>
           <button class="btn small ghost" id="replayBtn" type="button" title="Replay how the agents handled this call">Replay</button>
-          <button class="panel-hide" type="button" data-hide="agents" style="margin-left:0">Hide</button>
+          
         </div>
         <svg id="net" viewBox="0 0 360 272" role="group" aria-label="Qwen, A1 Police, A2 Ambulance, A3 Fire and CR working on one call">
           <g id="netEdges"></g><g id="netPk" class="pk"></g><g id="netNodes"></g>
         </svg>
         <p class="net-detail" id="netDetail" aria-live="polite"></p>
       </section>
-      <section class="log-panel">
-        <button class="log-toggle" id="logToggle" type="button" aria-expanded="false" aria-controls="logBody">
-          <span class="label">Decision log <span id="logCount"></span></span><span class="latest" id="logLatest"></span><span class="chev" aria-hidden="true">▶</span>
-        </button>
-        <div class="log-body" id="logBody" hidden>
-          <div class="log-filters">
-            <div id="toggles" role="group" aria-label="Show agents" style="display:flex;gap:4px;flex-wrap:wrap"></div>
-            <label><input type="checkbox" id="feedOnly"> Selected call only</label>
-            <label><input type="checkbox" id="followLive" checked> Follow new calls</label>
+      <section class="rail-tabs">
+        <div class="tabs rtabs" role="tablist" id="railTabs"></div>
+        <div class="pane" id="paneAgents"></div>
+        <div class="pane" id="paneNlp" hidden></div>
+        <div class="pane log-pane" id="paneLog" hidden>
+          <div class="pane-sec"><span class="label">Incident log</span><div id="incLog"></div></div>
+          <div class="pane-sec"><span class="label">Agent decisions</span></div>
+          <button class="log-toggle" id="logToggle" type="button" hidden aria-expanded="true"><span id="logCount"></span><span id="logLatest"></span><span class="chev"></span></button>
+          <div class="log-body" id="logBody">
+            <div class="log-filters">
+              <div id="toggles" role="group" aria-label="Show agents" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+              <label><input type="checkbox" id="feedOnly" checked> Selected call only</label>
+              <label><input type="checkbox" id="followLive" checked> Follow new calls</label>
+            </div>
+            <ol class="feed" id="feed"></ol>
           </div>
-          <ol class="feed" id="feed"></ol>
         </div>
       </section>
     </aside>
@@ -620,7 +764,7 @@ const S = { config: {}, mode: "mock", state: null, lastSeen: 0, online: false, s
 const RESP = {};            // response_id -> full IncidentResponse (immutable once written)
 const JOBS = {};            // job_id -> {incident_id, events[], queue[], stage, done, replay, startedAt}
 const FEED = [];            // decision log entries across all jobs
-const UI = { selected: null, chips: new Set(), tab: "outcome", hidden: new Set(), acked: new Set(), netNode: null, toast: null };
+const UI = { selected: null, chips: new Set(), tab: "process", railTab: "agents", hidden: new Set(), acked: new Set(), netNode: null, toast: null };
 let prevMatrix = null, baseMatrix = null, lastScored = 0;
 
 const incidents = () => (S.state ? S.state.incidents : []);
@@ -642,7 +786,10 @@ async function refreshState() {
       (!RESP[i.latest_response_id]?.evaluation || i.status !== "closed" || S.state.world?.enabled)).map((i) => i.latest_response_id);
     await Promise.all(missing.map((id) => api(`/responses/${id}`).then((r) => { RESP[id] = r; }).catch(() => {})));
     // Join pipeline runs started by anyone (another screen, the CLI burst); replay finished ones quietly.
-    for (const j of S.state.jobs.slice(-12)) if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, j.done);
+    for (const j of S.state.jobs.slice(-12)) {
+      if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, j.done);
+      else if (JOBS[j.job_id].incident_id == null && j.incident_id != null) JOBS[j.job_id].incident_id = j.incident_id;  // ids arrive at ingest
+    }
   } catch (e) {
     S.online = false;
   }
@@ -654,17 +801,18 @@ async function refreshState() {
 function renderConn() {
   const el = $("conn");
   const mode = S.mode === "live" ? `live – ${S.config.live_label || "models"}` : "rules only";
-  if (S.online) { el.className = "pill ok"; el.lastChild.textContent = `Online – ${mode}`; }
+  if (S.online) { el.className = "conn-dot ok"; el.lastChild.textContent = `Online – ${mode}`; }
   else {
     const ago = S.lastSeen ? Math.round((Date.now() - S.lastSeen) / 1000) : null;
-    el.className = "pill bad"; el.lastChild.textContent = ago == null ? "Offline" : `Offline – last seen ${ago}s ago`;
+    el.className = "conn-dot bad"; el.lastChild.textContent = ago == null ? "Offline" : `Offline – last seen ${ago}s ago`;
   }
+  el.title = el.lastChild.textContent;
   const ts = S.state && S.state.time_scale;
-  $("footNote").textContent = `${API_BASE ? "Via Vercel proxy to the DGX Spark" : "Served by the SURU API"}${ts && ts !== 1 ? ` – unit return time ×${ts}` : ""}`;
+  $("footNote").textContent = `${API_BASE.startsWith("http://localhost") ? "Local console → DGX Spark (SSH tunnel)" : API_BASE ? "Via Vercel proxy to the DGX Spark" : "Served by the SURU API"}${ts && ts !== 1 ? ` – unit return time ×${ts}` : ""}`;
 }
 
 // ---- pipeline jobs and their live event streams ---------------------------------------------- //
-const EVENT_NAMES = ["ingested", "merged", "routing", "routed", "agent_start", "agent_done", "conflicts_detected", "cr_start", "cr_decided", "committed", "evaluating", "evaluated", "completed", "error"];
+const EVENT_NAMES = ["ingested", "merged", "routing", "routed", "agent_start", "agent_done", "conflicts_detected", "cr_start", "cr_decided", "committed", "evaluating", "evaluated", "completed", "world_outcome", "error"];
 const STAGES = [["ingested", "Call received, duplicate check"], ["routed", "Qwen routed it"], ["agent_done", "Agencies proposed"], ["conflicts_detected", "Conflicts checked"],
   ["cr_decided", "CR decided"], ["committed", "Units dispatched"], ["evaluated", "Qwen scored the response"], ["completed", "Moved to backlog"]];
 
@@ -704,6 +852,7 @@ function apply(job, ev) {
   switch (name) {
     case "ingested": {
       const dd = d.dedup || {}, i = d.incident || {}, tri = d.triage || {};
+      if (job.incident_id == null && i.incident_id != null) job.incident_id = Number(i.incident_id);
       job.stage = "Duplicate check";
       add("Qwen", "CALL", "", `${catText(tri.category)} – ${shortPlace(i.location?.address || i.location?.landmark || tri.place)} – sev ${tri.severity}`,
         [i.description, dd.verdict && dd.verdict !== "new" ? `${cap(dd.verdict)} to ${dd.match_incident_id}: ${dd.reason}` : null].filter(Boolean).join(" "), dd.executed_by);
@@ -758,7 +907,12 @@ function apply(job, ev) {
       job.stage = `Scored ${d.score}/100`; job.evaluation = d;
       add("Qwen", "SCORED", (VERDICT[d.verdict] || ["", ""])[0], `${d.score} – ${d.grade} – ${(VERDICT[d.verdict] || ["", nice(d.verdict)])[1]}`, [d.headline, ...(d.findings || [])].join(" "), d.executed_by);
       break;
-    case "completed": job.stage = "Units assigned"; if (d.response) RESP[d.response.response_id] = d.response; break;
+      case "world_outcome":
+        job.stage = d.accepted ? "World updated" : "Outcome rejected";
+        add("Qwen", "WORLD", d.accepted ? "good" : "bad", job.stage,
+          d.accepted ? `${nice(d.proposal.outcome)}: ${d.proposal.reason}` : d.error, d.executed_by);
+        break;
+      case "completed": job.stage = "Units assigned"; if (d.response) RESP[d.response.response_id] = d.response; break;
     case "error": job.stage = "Error"; job.error = d.message; add("Rules", "ERROR", "bad", "Pipeline failed", d.message, "rules"); break;
   }
   job.lastEventAt = Date.now();
@@ -1114,7 +1268,7 @@ function drawNodes(m) {
     const agency = AGENT_AGENCY[k], color = agency ? agencyColor(agency) : css(AGENTS[k].color);
     const idle = agency ? !n.on : false;
     const node = sv("g", { class: `net-node${idle ? " idle" : ""}${UI.netNode === k ? " picked" : ""}`, tabindex: 0, role: "button", "aria-label": `${AGENTS[k].label}${n.sub ? ": " + n.sub : ""}`,
-      onclick: () => { UI.netNode = UI.netNode === k ? null : k; renderNet(true); },
+      onclick: () => { UI.netNode = UI.netNode === k ? null : k; UI.railTab = "agents"; railSig = ""; renderNet(true); renderRail(); },
       onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); UI.netNode = UI.netNode === k ? null : k; renderNet(true); } } },
       n.working ? sv("circle", { class: "working", cx: x, cy: y, r: NR + 6 }) : null,
       n.by === "fallback" ? sv("circle", { class: "fb", cx: x, cy: y, r: NR + 4 }) : null,
@@ -1222,6 +1376,239 @@ function renderFeed() {
   }));
 }
 
+
+// ---- story mode: one incident told stage by stage (top band, Process tab, Agents/NLP/Log tabs) -------- //
+const STORY = [
+  ["call", "Call received", "999"], ["nlp", "Understand", "NLP · Qwen"], ["dedup", "Duplicates", "MiniLM + Qwen"],
+  ["route", "Route", "Qwen"], ["agents", "Agencies plan", "Nemotron A1–A3"], ["conflicts", "Conflicts", "Rules"],
+  ["cr", "Final call", "Nemotron CR"], ["dispatch", "Dispatch", "Code"], ["score", "Score", "Qwen"]];
+const NOW_TEXT = {
+  call: "A 999 call has just come in.",
+  nlp: "Qwen reads the caller's words: what happened, how bad, who is hurt.",
+  dedup: "MiniLM compares it with recent calls; Qwen decides if it is the same incident.",
+  route: "Qwen picks the agencies and who leads.",
+  agents: "Each agency's Nemotron agent drafts what it needs from its own playbook.",
+  conflicts: "Code checks every request against the live inventory.",
+  cr: "Nemotron CR settles the conflicts and makes the final call.",
+  dispatch: "Code assigns real vehicles and crews from the nearest stations.",
+  score: "Qwen grades the response against the success metrics.",
+};
+const CASES = {};
+function nlpFor(id) {
+  const ev = jobFor(id)?.events.find((e) => e.event === "ingested");
+  if (ev) return { triage: ev.data.triage || {}, dedup: ev.data.dedup || {}, incident: ev.data.incident || {} };
+  if (id == null) return null;
+  if (!(id in CASES)) { CASES[id] = null; api(`/incidents/${encodeURIComponent(id)}`).then((x) => { CASES[id] = x; railSig = ""; drawerSig = ""; renderAll(); }).catch(() => {}); }
+  const c = CASES[id];
+  return c ? { triage: c.triage || {}, dedup: c.dedup || {}, incident: c.incident || {} } : null;
+}
+function stagesFor(id) {
+  const inc = incidentOf(id); if (!inc) return null;
+  const job = jobFor(id), r = responseFor(inc), nlp = nlpFor(id);
+  const seen = new Set((job?.events || []).map((e) => e.event));
+  const finished = !!r || inc.status === "merged" || (!job && inc.status !== "pending");
+  const t = nlp?.triage || {}, dd = nlp?.dedup || {};
+  const routing = r?.routing || job?.routing, agents = r?.agent_responses || job?.agents || [];
+  const kids = incidents().filter((x) => x.duplicate_of === id);
+  const merged = inc.status === "merged";
+  const nRouted = (routing?.agencies || []).length;
+  const done = {
+    call: true, nlp: seen.has("ingested") || finished, dedup: seen.has("ingested") || finished,
+    route: seen.has("routed") || !!r, agents: !!r || (nRouted && agents.length >= nRouted), conflicts: seen.has("conflicts_detected") || !!r,
+    cr: seen.has("cr_decided") || !!r, dispatch: seen.has("committed") || !!r, score: seen.has("evaluated") || !!r?.evaluation,
+  };
+  const hard = r?.hard_conflicts || job?.conflicts?.hard || [], soft = r?.soft_conflicts || job?.conflicts?.soft_rules || [];
+  const res = r?.hard_resolutions || job?.cr?.resolutions || [];
+  const ev = r?.evaluation || job?.evaluation;
+  const units = r?.allocations || [], short = sum(r?.unmet || [], (u) => u.quantity);
+  const working = [...(job?.working || [])].map((k) => AGENTS[k]?.label.replace(/^A\d /, "")).join(", ");
+  const text = {
+    call: nlp?.incident?.description ? `“${String(nlp.incident.description).slice(0, 110)}${nlp.incident.description.length > 110 ? "…" : ""}”` : `${catText(inc.category)} at ${shortPlace(inc.address)}`,
+    nlp: done.nlp ? [catText(t.category || inc.category), `severity ${t.severity ?? inc.severity}`, t.casualties ? `${t.casualties} injured` : null, t.trapped ? `${t.trapped} trapped` : null, t.weapons ? "weapons" : null].filter(Boolean).join(" · ") : "",
+    dedup: merged ? `Same incident as ${inc.duplicate_of}${dd.distance_m != null ? `, ${Math.round(dd.distance_m)} m away` : ""} → merged` : done.dedup ? (kids.length ? `New incident · ${kids.length} more caller${kids.length > 1 ? "s" : ""} merged in` : "New incident") : "",
+    route: routing ? `${AGENCY[routing.lead_agency]?.label || routing.lead_agency} leads${(routing.agencies || []).length > 1 ? " · " + routing.agencies.filter((a) => a !== routing.lead_agency).map((a) => AGENCY[a]?.label || a).join(", ") : ""}` : "",
+    agents: agents.length ? agents.map((p) => `${AGENCY[p.agency]?.label || p.agency} ${sum(p.resource_requests || [], (q) => q.quantity)}`).join(" · ") + " units asked" + (working ? ` · ${working} thinking…` : "") : working ? `${working} thinking…` : "",
+    conflicts: done.conflicts ? (hard.length || soft.length ? `${hard.length} resource · ${soft.length} scene` : "None") : "",
+    cr: done.cr ? (res.length ? `${[...new Set(res.map((x) => SHORT_ACTION[x.action] || nice(x.action)))].join(", ")} · ${res.length} settled` : "Nothing to settle") : "",
+    dispatch: done.dispatch && r ? `${units.length} vehicles · ${sum(units, (u) => (u.crew || []).length)} crew${units.length ? ` · first ${Math.round(Math.min(...units.map((u) => u.eta_min)))} min` : ""}${short ? ` · ${short} short` : ""}` : "",
+    score: ev ? `${ev.score}/100 · ${ev.grade} · ${(VERDICT[ev.verdict] || ["", nice(ev.verdict)])[1]}` : "",
+  };
+  const by = { nlp: t.executed_by, dedup: dd.executed_by, route: routing?.executed_by, agents: agents[0]?.executed_by, conflicts: "rules", cr: r?.cr_executed_by || job?.cr?.executed_by, dispatch: "rules", score: ev?.executed_by };
+  const tOf = { nlp: "ingested", dedup: "ingested", route: "routed", conflicts: "conflicts_detected", cr: "cr_decided", dispatch: "committed", score: "evaluated" };
+  let nowKey = null;
+  const steps = STORY.map(([k, label, who]) => {
+    let state = done[k] ? "done" : "todo";
+    if (merged && !["call", "nlp", "dedup"].includes(k)) state = "skip";
+    if (state === "todo" && !nowKey && job && !job.done) { nowKey = k; state = "now"; }
+    const evT = job?.events.find((e) => e.event === tOf[k])?.t;
+    return { key: k, label, who, state, text: state === "skip" ? "skipped: duplicate" : text[k], by: by[k], t: evT };
+  });
+  return { inc, job, r, ev, steps, nowKey, merged, finished };
+}
+const TICK = { seen: new Set(), queue: [], shown: null, final: null };
+function tickerFeed() {
+  const id = netIncident();
+  if (id !== TICK.focus) { TICK.focus = id; if (TICK.shown?.final) TICK.shown = null; }
+  const fresh = FEED.filter((f) => !TICK.seen.has(f.id)).sort((a, b) => a.id - b.id);
+  for (const f of fresh) { TICK.seen.add(f.id); TICK.queue.push(f); }  // every agent's updates, in order
+  if (TICK.queue.length > 6) TICK.queue.splice(0, TICK.queue.length - 6);
+  if (TICK.queue.length) TICK.shown = TICK.queue.shift();
+  else {
+    const m = id != null && stagesFor(id);
+    if (m && m.ev && m.r) {
+      const units = m.r.allocations || [];
+      const first = units.length ? Math.round(Math.min(...units.map((u) => u.eta_min))) : null;
+      const head = String(m.ev.headline || `${catText(m.inc.category)} at ${shortPlace(m.inc.address)}: ${units.length} vehicles sent`).replace(/[.\s]+$/, "");
+      TICK.shown = { final: true, text: `${head}${first != null ? `, estimated first arrival ${first} min` : ""} — scored ${m.ev.score}/100.` };
+    }
+  }
+  renderTicker();
+}
+setInterval(tickerFeed, 2200);
+function renderTicker() {
+  const el = $("ticker"); if (!el) return;
+  const f = TICK.shown;
+  const sig = f ? (f.final ? "final" + f.text : f.id) : "none";
+  if (sig === renderTicker.sig) return;
+  renderTicker.sig = sig;
+  el.replaceChildren(f ? h("div", { class: "tick-line" + (f.final ? " final" : "") },
+    f.final ? h("span", { class: "tick-tag" }, "Response") : [h("time", {}, hhmmss(f.ts)), agentChip(f.agent), h("span", { class: "ev-type " + (f.tone || "") }, f.type)],
+    h("span", { class: "tick-text" }, f.text)) : h("div", { class: "tick-line muted" }, h("span", { class: "tick-text" }, "Live updates from every agent appear here, one at a time.")));
+}
+function renderStory() {
+  const id = netIncident(), m = id != null && stagesFor(id);
+  const sig = JSON.stringify(m ? [id, m.steps.map((x) => [x.state, x.text]), m.ev?.score] : null);
+  if (sig === renderStory.sig) return;
+  renderStory.sig = sig;
+  const stepEl = (label, who, state, text, by, t) => h("div", { class: "step hov " + (state || "") },
+    h("b", {}, state === "done" ? "✓ " : "", label),
+    h("div", { class: "pop" }, h("div", { class: "pop-h" }, h("b", {}, label), h("span", { class: "muted" }, who), by ? byBadge(by) : null, t != null ? h("span", { class: "mono muted" }, `${t}s`) : null),
+      h("p", {}, state === "now" ? NOW_TEXT[STORY.find((x) => x[1] === label)?.[0]] : text || (state === "skip" ? "Skipped: duplicate call." : "Not started yet."))));
+  if (!m) {
+    $("story").replaceChildren(h("div", { class: "story-top" }, h("span", { class: "narr" }, "Press ", h("em", {}, "▶ Run demo"), " — three people call 999 about the same fire.")),
+      h("div", { class: "steps" }, STORY.map(([k, label, who]) => stepEl(label, who, "", "", null, null))), h("div", { class: "ticker", id: "ticker" }));
+    renderTicker.sig = ""; renderTicker(); return;
+  }
+  const narr = m.merged ? [h("em", {}, "Duplicate call. "), `Merged into ${m.inc.duplicate_of}.`]
+    : m.nowKey ? [h("em", {}, `${STORY.find((x) => x[0] === m.nowKey)[1]}: `), NOW_TEXT[m.nowKey]]
+    : m.ev ? [h("em", {}, "Done. "), m.ev.headline || `Scored ${m.ev.score}/100.`] : [h("em", {}, "Starting… "), "the pipeline is picking up the call."];
+  $("story").replaceChildren(
+    h("div", { class: "story-top" },
+      h("span", { class: "sev-badge", style: `background:${SEV_COLOR[m.inc.severity]}` }, m.inc.severity),
+      h("b", { class: "story-inc" }, `${catText(m.inc.category)} – ${shortPlace(m.inc.address)}`),
+      h("span", { class: "narr" }, ...narr),
+      m.ev ? h("span", { class: "story-score tone-" + band(m.ev.score) }, `${m.ev.score}`, h("small", {}, "/100")) : null),
+    h("div", { class: "steps" }, m.steps.map((x) => stepEl(x.label, x.who, x.state, x.text, x.by, x.t))),
+    h("div", { class: "ticker", id: "ticker" }));
+  renderTicker.sig = ""; renderTicker();
+}
+
+const INV = { prev: {}, flash: {} };
+function renderInventory() {
+  if (!S.state) return;
+  const now = Date.now();
+  for (const r of S.state.inventory) {
+    const p = INV.prev[r.resource_type];
+    if (p != null && p !== r.available) INV.flash[r.resource_type] = { d: r.available - p, until: now + 8000 };
+    INV.prev[r.resource_type] = r.available;
+  }
+  const crews = {};
+  for (const c of S.state.personnel || []) { const x = crews[c.agency] = crews[c.agency] || { a: 0, t: 0 }; x.a += c.available; x.t += c.on_shift; }
+  const rows = ["police", "ambulance", "fire"].map((ag) => {
+    const list = S.state.inventory.filter((x) => x.agency === ag).sort((a, b) => b.in_service - a.in_service);
+    const free = sum(list, (x) => x.available), tot = sum(list, (x) => x.in_service), share = tot ? free / tot : 0;
+    const d = sum(list, (x) => { const f = INV.flash[x.resource_type]; return f && f.until > now ? f.d : 0; });
+    return h("div", { class: "inv-row hov" },
+      h("span", { class: "ag-name" }, glyphSvg(ag, agencyColor(ag)), AGENCY[ag].label),
+      h("span", { class: "inv-bar" }, h("span", { style: `width:${Math.round(share * 100)}%;background:${share < 0.3 ? "var(--bad)" : share < 0.6 ? "var(--warn)" : agencyColor(ag)}` })),
+      h("span", { class: "inv-num" }, h("b", {}, free), `/${tot}`),
+      h("span", { class: "inv-delta " + (d < 0 ? "down" : d > 0 ? "up" : "") }, d ? (d > 0 ? `+${d}` : `${d}`) : ""),
+      h("div", { class: "pop" }, h("div", { class: "pop-h" }, h("b", {}, `${AGENCY[ag].label} vehicles`), crews[ag] ? h("span", { class: "muted" }, `crew ${crews[ag].a}/${crews[ag].t} free`) : null),
+        h("table", { class: "pop-t" }, list.map((x) => { const f = INV.flash[x.resource_type], live = f && f.until > now;
+          return h("tr", { class: x.available === 0 ? "out" : "" }, h("td", {}, cap(nice(x.resource_type))), h("td", { class: "num" }, h("b", {}, x.available), `/${x.in_service}`),
+            h("td", { class: "num " + (live ? (f.d < 0 ? "down" : "up") : "") }, live ? (f.d > 0 ? `+${f.d}` : `${f.d}`) : "")); }))));
+  });
+  const sig = JSON.stringify([S.state.inventory.map((x) => x.available), Object.entries(INV.flash).filter(([, f]) => f.until > now).map(([k]) => k), crews]);
+  if (sig === renderInventory.sig) return;
+  renderInventory.sig = sig;
+  $("inv").replaceChildren(h("div", { class: "inv-head" }, h("span", { class: "label" }, "Live inventory"), h("span", { class: "muted small" }, "vehicles free · hover for detail")), ...rows);
+}
+setInterval(() => { renderInventory.sig = ""; renderInventory(); }, 2000);
+
+function processView(id) {
+  const m = stagesFor(id);
+  if (!m) return h("p", { class: "muted" }, "Select a call.");
+  return h("ol", { class: "proc" }, m.steps.map((x, i) => h("li", { class: "proc-row " + x.state },
+    h("span", { class: "proc-dot" }, x.state === "done" ? "✓" : String(i + 1)),
+    h("div", {}, h("div", { class: "proc-top" }, h("b", {}, x.label), h("span", { class: "proc-who" }, x.who), x.by ? byBadge(x.by) : null, x.t != null ? h("span", { class: "proc-t" }, `${x.t}s`) : null),
+      h("div", { class: "proc-text" }, x.state === "now" ? NOW_TEXT[x.key] : x.text || (x.state === "todo" ? "" : "—"))))));
+}
+
+let railSig = "";
+function renderRail() {
+  const id = netIncident();
+  const tabs = [["agents", "Agents"], ["nlp", "NLP results"], ["log", "Incident log"]];
+  $("railTabs").replaceChildren(...tabs.map(([k, t]) => h("button", { role: "tab", type: "button", "aria-selected": UI.railTab === k, onclick: () => { UI.railTab = k; railSig = ""; renderRail(); renderFeed(); } }, t)));
+  $("paneAgents").hidden = UI.railTab !== "agents"; $("paneNlp").hidden = UI.railTab !== "nlp"; $("paneLog").hidden = UI.railTab !== "log";
+  const m = id != null ? stagesFor(id) : null, job = id != null ? jobFor(id) : null;
+  const sig = JSON.stringify([id, UI.railTab, UI.netNode, m?.steps.map((x) => [x.state, x.text]), job?.events.length, !!(id != null && CASES[id]), UI.brief?.incident_id === id ? UI.brief.log.length : 0]);
+  if (sig === railSig) return;
+  railSig = sig;
+  if (UI.railTab === "agents") $("paneAgents").replaceChildren(agentsPane(id));
+  if (UI.railTab === "nlp") $("paneNlp").replaceChildren(nlpPane(id));
+  if (UI.railTab === "log") {
+    if (id != null && (UI.brief?.incident_id !== id || UI.briefAt !== job?.events.length)) { UI.briefAt = job?.events.length; loadBrief(id); }
+    const b = UI.brief && UI.brief.incident_id === id ? UI.brief : null;
+    $("incLog").replaceChildren(id == null ? h("p", { class: "muted small" }, "Select a call.") : b ? h("div", { class: "log" }, b.log.flatMap((l) => [h("time", {}, hhmm(l.ts)), h("div", { class: l.kind === "flag" ? "flag" : "" }, l.text)])) : h("p", { class: "muted small" }, "Loading…"));
+  }
+}
+function agentsPane(id) {
+  if (id == null) return h("p", { class: "empty" }, "Start a call to watch the agents work.");
+  const nm = netModel(id), r = nm.r, job = nm.job, nlp = nlpFor(id);
+  const agents = r?.agent_responses || job?.agents || [];
+  const rows = [
+    { k: "Qwen", color: css("--accent"), what: "Orchestrator: understands the call, checks duplicates, routes, then scores." },
+    { k: "A1", color: agencyColor("police"), what: "Police agent: cordons, scene control, traffic." },
+    { k: "A2", color: agencyColor("ambulance"), what: "Ambulance agent: casualties, triage, transport." },
+    { k: "A3", color: agencyColor("fire"), what: "Fire agent: rescue, firefighting, hazmat." },
+    { k: "CR", color: css("--cr"), what: "Conflict resolver: final manifest, conflicts, dispatch orders." }];
+  return h("div", {}, rows.map(({ k, color, what }) => {
+    const n = nm.nodes[k] || {}, agency = AGENT_AGENCY[k], idle = agency && !n.on;
+    const p = agency ? agents.find((x) => x.agent_id === k || x.agency === agency) : null;
+    const state = n.working ? "working" : idle ? "not needed" : k === "Qwen" ? (r?.evaluation ? "done" : nm.job && !nm.job.done ? "working" : r ? "done" : "") : k === "CR" ? (r ? "done" : "waiting") : p ? "done" : "waiting";
+    let line = n.detail || "";
+    if (k === "Qwen" && nlp?.triage?.category) line = `Read the call as ${catText(nlp.triage.category).toLowerCase()}, severity ${nlp.triage.severity}. ${line}`;
+    if (k === "CR" && r?.cr_rationale) line = r.cr_rationale;
+    const picked = UI.netNode === k;
+    return h("article", { class: `ag-row${n.working ? " working" : ""}${idle ? " idle" : ""}${picked ? " picked" : ""}`, onclick: () => { UI.netNode = picked ? null : k; railSig = ""; renderNet(true); renderRail(); } },
+      h("span", { class: "ag-ico", style: `background:${color}` }, glyphSvg(agency || k, k === "CR" || k === "Qwen" ? "#08161d" : "#ffffff")),
+      h("div", { class: "ag-main" },
+        h("div", { class: "ag-top" }, h("b", {}, AGENTS[k].label), n.lead ? h("span", { class: "ag-lead" }, "lead") : null, state ? h("span", { class: "ag-state " + state.replace(" ", "-") }, state) : null, n.by ? byBadge(n.by) : null),
+        h("div", { class: "ag-what" }, what),
+        line ? h("div", { class: "ag-line" }, line) : null,
+        picked && p ? agentCard(p) : null,
+        picked && k === "CR" && r ? h("div", { class: "ag-more" }, (r.hard_resolutions || []).map((x) => h("div", { class: "small" }, `• ${ACTION[x.action] || nice(x.action)}: ${unitText(x.resource_type)}${x.rationale ? " — " + x.rationale : ""}`))) : null));
+  }));
+}
+function nlpPane(id) {
+  if (id == null) return h("p", { class: "empty" }, "Select a call to see what the NLP stage extracted.");
+  const n = nlpFor(id);
+  if (!n) return h("p", { class: "muted" }, "Loading…");
+  const t = n.triage, d = n.dedup, kids = incidents().filter((x) => x.duplicate_of === id);
+  const kv = (rows) => h("dl", { class: "kv nlp" }, rows.filter((x) => x[1] !== undefined && x[1] !== null && x[1] !== "").flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+  return h("div", {},
+    n.incident?.description ? h("div", { class: "nlp-quote" }, h("span", { class: "label" }, "Caller said"), h("p", {}, `“${n.incident.description}”`)) : null,
+    h("div", { class: "nlp-card" }, h("div", { class: "nlp-h" }, h("b", {}, "Triage"), h("span", { class: "muted small" }, "what Qwen extracted"), byBadge(t.executed_by)),
+      kv([["Incident", catText(t.category)], ["Severity", t.severity != null ? `${t.severity} – ${SEVERITY_TEXT[t.severity] || ""}` : null], ["Injured", t.casualties], ["Trapped", t.trapped],
+        ["Weapons", t.weapons ? "yes" : "no"], ["Hazards", (t.hazards || []).join(", ") || "none"], ["Place", t.place], ["Located by", t.location_resolved_by]]),
+      t.rationale ? h("p", { class: "nlp-why" }, t.rationale) : null),
+    h("div", { class: "nlp-card" }, h("div", { class: "nlp-h" }, h("b", {}, "Duplicate check"), h("span", { class: "muted small" }, "MiniLM similarity + Qwen"), byBadge(d.executed_by)),
+      kv([["Verdict", d.verdict ? cap(d.verdict) : null], ["Matched call", d.match_incident_id], ["Similarity", d.score ? `${Math.round(d.score * 100)}%` : null],
+        ["Distance", d.distance_m != null ? `${Math.round(d.distance_m)} m` : null], ["Time apart", d.minutes_apart != null ? `${d.minutes_apart.toFixed(1)} min` : null],
+        ["MiniLM said", d.minilm_verdict ? cap(d.minilm_verdict) : null], ["Merged callers", kids.length ? kids.map((x) => shortPlace(x.address)).join(", ") : null]]),
+      d.reason ? h("p", { class: "nlp-why" }, d.reason) : null));
+}
+
 // ---- detail drawer: outcome first, the reasoning one tab away ---------------------------------- //
 let drawerSig = "";
 function renderDrawer() {
@@ -1230,11 +1617,11 @@ function renderDrawer() {
   document.body.classList.toggle("has-selection", !!inc);
   if (!inc) { if (drawerSig !== "none") { drawerSig = "none"; drawer.replaceChildren(h("p", { class: "empty" }, "Select a call in the list or on the map to see what was sent and why.")); } return; }
   const r = responseFor(inc), job = jobFor(inc.incident_id);
-  const sig = JSON.stringify([inc, r?.response_id, r?.evaluation?.score, job?.events.length, UI.tab, UI.brief?.incident_id === inc.incident_id ? UI.brief.log.length : 0, inc.world_outcome]);
+  const sig = JSON.stringify([inc, r?.response_id, r?.evaluation, job?.events.length, UI.tab, UI.brief?.incident_id === inc.incident_id ? UI.brief.log.length : 0, inc.world_outcome]);
   if (sig === drawerSig) return;
   drawerSig = sig;
   const [tone, text] = statusOf(inc);
-  const tabs = [["outcome", "Outcome"], ["why", "Agents"], ["conflicts", `Conflicts${r ? ` (${(r.hard_conflicts || []).length + (r.soft_conflicts || []).length})` : ""}`], ["manifest", "Manifest"], ["timeline", "Timeline"]];
+  const tabs = [["process", "Process"], ["outcome", "Dispatch"], ["conflicts", `Conflicts${r ? ` (${(r.hard_conflicts || []).length + (r.soft_conflicts || []).length})` : ""}`], ["manifest", "Manifest"]];
   const scroll = drawer.querySelector(".d-body")?.scrollTop || 0;
   drawer.replaceChildren(
     h("div", { class: "d-head" },
@@ -1247,7 +1634,9 @@ function renderDrawer() {
     h("div", { class: "tabs", role: "tablist" }, tabs.map(([k, t]) => h("button", { role: "tab", type: "button", "aria-selected": UI.tab === k, onclick: () => { UI.tab = k; if (k === "timeline") loadBrief(inc.incident_id); renderDrawer(); } }, t))),
     h("div", {class:"d-body"},
       inc.world_outcome ? h("p", {class:"hint"}, `Observed world: ${nice(inc.world_outcome.status)}; containment ${inc.world_outcome.containment_success ? "achieved" : "pending"}; effective work ${inc.world_outcome.effective_work_ticks} min. Dispatch assessment is separate.`) : null,
-      TAB[UI.tab](inc,r,job)));
+        r?.evaluation?.metrics?.world_outcome?.assessment ? h("p", {class:"hint"},
+          `Outcome proposal (${r.evaluation.metrics.world_outcome.assessment.executed_by}): ${r.evaluation.metrics.world_outcome.assessment.accepted ? r.evaluation.metrics.world_outcome.assessment.proposal?.outcome : "rejected"}; ${r.evaluation.metrics.world_outcome.assessment.accepted ? r.evaluation.metrics.world_outcome.assessment.proposal?.reason : r.evaluation.metrics.world_outcome.assessment.error}`) : null,
+        TAB[UI.tab](inc,r,job)));
   drawer.querySelector(".d-body").scrollTop = scroll;
 }
 
@@ -1273,6 +1662,7 @@ function pipelineView(job) {
 }
 
 const TAB = {
+  process(inc) { return processView(inc.incident_id); },
   outcome(inc, r, job) {
     if (inc.status === "merged") {
       const parent = incidentOf(inc.duplicate_of);
@@ -1383,7 +1773,7 @@ function agentCard(p) {
 
 async function loadBrief(id) {
   try { UI.brief = await api(`/api/brief/${encodeURIComponent(id)}`); } catch (e) { UI.brief = { incident_id: id, log: [{ ts: new Date().toISOString(), kind: "flag", text: `Could not load the log: ${e.message}` }] }; }
-  renderDrawer();
+  renderDrawer(); railSig = ""; renderRail();
 }
 
 // ---- resources --------------------------------------------------------------------------------- //
@@ -1439,7 +1829,7 @@ function forecastChart(r, points) {
 // ---- actions ----------------------------------------------------------------------------------- //
 function select(id, fly = true) {
   id = id == null ? null : Number(id);
-  if (id !== UI.selected) { UI.tab = "outcome"; drawerSig = ""; }
+  if (id !== UI.selected) { UI.tab = "process"; drawerSig = ""; }
   UI.selected = id;
   $("legend").open = !id;
   renderAll();
@@ -1453,18 +1843,70 @@ async function startRun(incident) {
   refreshState();
 }
 
+// One click = the cluster demo: reset the city, then three 999 calls about the same Park Hill fire arrive
+// seconds apart. MiniLM + Qwen merge the duplicates, so only ONE incident goes through Nemotron A1-A3 and CR.
+// Fast (one pipeline run) and it never exhausts the city. Progress + elapsed time on the button.
+const CLUSTER_CALLS = 3;  // the first three Park Hill reports: same fire, different callers
 async function runDemo() {
   const btn = $("btnDemo");
+  if (btn.disabled) return;
+  const names = Object.keys(S.bursts);
+  if (!names.length) return toastError("No cluster scenario on this server.");
   btn.disabled = true;
+  const t0 = Date.now();
+  const fmt = (ms) => { const t = Math.round(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };
+  let label = "Resetting city";
+  const tick = setInterval(() => { btn.textContent = `${label} · ${fmt(Date.now() - t0)}`; }, 500);
   try {
-    const list = S.scenarios;
-    for (let i = 0; i < list.length; i++) {
-      btn.textContent = `Demo ${i + 1}/${list.length}…`;
-      await startRun(list[i]);
-      if (i < list.length - 1) await new Promise((r) => setTimeout(r, S.mode === "live" ? 8000 : 6500));
+    await post("/api/reset");
+    for (const k of Object.keys(JOBS)) delete JOBS[k];
+    FEED.length = 0; select(null, false);
+    UI.railTab = "agents"; UI.netNode = null; railSig = ""; drawerSig = ""; renderStory.sig = "";
+    // Incident and response ids restart after a reset: drop everything cached under the old ids.
+    for (const k of Object.keys(CASES)) delete CASES[k];
+    for (const k of Object.keys(RESP)) delete RESP[k];
+    UI.brief = null;
+    TICK.queue.length = 0; TICK.shown = null; for (const f of FEED) TICK.seen.add(f.id);
+    await refreshState();
+    // An earlier call is already tying up crews, so the cluster is not handled from a full city.
+    const earlier = S.scenarios.find((x) => /9th floor|Broomhall/i.test(x.description || "")) || S.scenarios[3];
+    if (earlier) {
+      label = "Earlier call already on scene";
+      const pre = await post("/api/run", { incident: earlier, mode: "mock" });
+      subscribe(pre.job_id, pre.incident_id, true);
+      while (S.state && S.state.jobs_running) { await new Promise((r) => setTimeout(r, 400)); await refreshState(); }
+      await refreshState();
     }
-  } catch (e) { toastError(`Demo stopped: ${e.message}`); }
-  btn.disabled = false; btn.textContent = "▶ Run demo";
+    label = `${CLUSTER_CALLS} calls coming in`;
+    const calls = S.bursts[names[0]].slice(0, CLUSTER_CALLS);
+    const res = await post("/api/burst", { incidents: calls, mode: S.mode, stagger_s: 3 });
+    const mine = res.jobs.map((j) => j.job_id);
+    res.jobs.forEach((j, i) => { if (!JOBS[j.job_id]) subscribe(j.job_id, j.incident_id, false); });
+    if (res.jobs.length && res.jobs[0].incident_id != null) select(res.jobs[0].incident_id, false);
+    refreshState();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const jobs = mine.map((id) => JOBS[id]).filter(Boolean);
+      const merged = jobs.filter((j) => j.events.some((e) => e.event === "merged")).length;
+      const done = jobs.filter((j) => j.done).length;
+      label = merged ? `${merged} duplicate${merged > 1 ? "s" : ""} merged · agents working` : "Agents working";
+      const lead = jobs.find((j) => j.incident_id != null && !j.events.some((e) => e.event === "merged") && j.events.length);
+      if (lead && UI.selected !== lead.incident_id && merged) select(lead.incident_id, false);
+      if (done === mine.length) break;
+    }
+    await refreshState();
+    // End on the incident that was actually dispatched (not the last merged duplicate), so the agent
+    // network and decision log show the full Qwen -> A1-A3 -> CR story.
+    const lead = mine.map((id) => JOBS[id]).find((j) => j && !j.events.some((e) => e.event === "merged"));
+    if (lead) select(lead.incident_id, false);
+    clearInterval(tick);
+    btn.textContent = `✓ Demo complete · ${fmt(Date.now() - t0)} · run again`;
+  } catch (e) {
+    clearInterval(tick);
+    toastError(`Demo stopped: ${e.message}`);
+    btn.textContent = "▶ Run cluster demo";
+  }
+  btn.disabled = false;
 }
 
 async function runBurst() {
@@ -1482,7 +1924,7 @@ async function runBurst() {
 function toastError(text) { UI.toast = { text, until: Date.now() + 10000 }; renderAlerts(); }
 
 function renderAll() {
-  renderChips(); renderMatrix(); renderAlerts(); renderList(); renderMap(); renderDrawer(); renderNet(); renderFeed();
+  renderChips(); renderStory(); renderInventory(); renderAlerts(); renderList(); renderMap(); renderDrawer(); renderNet(); renderRail(); renderFeed();
   if ($("resDialog").open) renderResources();
 }
 
@@ -1490,15 +1932,17 @@ function renderWorldControls() {
   const world=S.state?.world, enabled=!!world?.enabled;
   for (const id of ["btnDemo","btnBurst","btnCall"]) $(id).hidden=enabled;
   for (const id of ["worldStatus","btnWorldDispatch","btnWorldAdvance"]) $(id).hidden=!enabled;
+  $("btnWorldReassess").hidden=!enabled || world.outcome_mode!=="model";
   if (enabled) {
     $("worldStatus").textContent=`Scenario minute ${world.tick}${world.inflight ? " ? agents assessing" : ""}`;
     $("btnWorldDispatch").disabled=!!world.inflight;
     $("btnWorldAdvance").disabled=!!world.inflight;
+    $("btnWorldReassess").disabled=!!world.inflight;
     for (const button of $("modeSeg").querySelectorAll("button")) button.disabled=true;
   }
 }
 async function updateWorld(action) {
-  const button=$(action==="dispatch" ? "btnWorldDispatch" : "btnWorldAdvance");
+  const button=$(action==="dispatch" ? "btnWorldDispatch" : action==="reassess" ? "btnWorldReassess" : "btnWorldAdvance");
   button.disabled=true;
   try { await post(`/ui/world/${action}`); await refreshState(); }
   catch(error) { toastError(error.message); }
@@ -1563,6 +2007,7 @@ const VIEW_ITEMS = [["calls", "Calls list"], ["matrix", "Success matrix"], ["ale
   ["log", "Decision log"], ["details", "Call details"], ["legend", "Map legend"]];
 const VIEW = Object.fromEntries(VIEW_ITEMS.map(([k]) => [k, true]));
 try { Object.assign(VIEW, JSON.parse(localStorage.getItem("suru-view") || "{}")); } catch { /* storage blocked: defaults */ }
+VIEW.agents = true; VIEW.log = true;  // the agents panel is the point of the demo: never start hidden
 function applyView() {
   for (const [k] of VIEW_ITEMS) document.body.classList.toggle("hide-" + k, !VIEW[k]);
   document.body.classList.toggle("hide-rail", !VIEW.agents && !VIEW.log);
@@ -1588,18 +2033,20 @@ async function bootConsole() {
   for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) d.close(); });
   $("btnWorldDispatch").onclick=()=>updateWorld("dispatch");
   $("btnWorldAdvance").onclick=()=>updateWorld("advance");
+  $("btnWorldReassess").onclick=()=>updateWorld("reassess");
+  $("btnMap").onclick = () => { const off = document.body.classList.toggle("map-hidden"); $("btnMap").textContent = off ? "Show map" : "Hide map"; if (!off && map) requestAnimationFrame(() => map.resize()); };
   $("btnDemo").onclick = runDemo; $("btnBurst").onclick = runBurst;
   $("btnCall").onclick = () => { $("callError").textContent = ""; $("callDialog").show(); };
   $("btnRes").onclick = () => { $("resDialog").showModal(); renderResources(); };
   $("btnSettings").onclick = () => $("settingsDialog").showModal();
   $("aboutLink").onclick = () => $("aboutDialog").showModal();
-  $("logToggle").onclick = () => setLogOpen($("logBody").hidden);
+  $("logToggle").onclick = () => {};
   $("replayBtn").onclick = () => { const id = netIncident(); if (id) replayFlow(id); };
   $("resLow").onchange = renderResources;
   $("feedOnly").onchange = () => { feedSig = ""; renderFeed(); };
   $("resetText").oninput = (e) => { $("resetBtn").disabled = e.target.value !== "RESET"; };
   $("resetBtn").onclick = async () => {
-    try { await post("/api/reset"); for (const k of Object.keys(JOBS)) delete JOBS[k]; FEED.length = 0; select(null, false); $("resetText").value = ""; $("resetBtn").disabled = true; $("settingsDialog").close(); refreshState(); }
+    try { await post("/api/reset"); for (const k of Object.keys(JOBS)) delete JOBS[k]; for (const k of Object.keys(CASES)) delete CASES[k]; for (const k of Object.keys(RESP)) delete RESP[k]; UI.brief = null; FEED.length = 0; select(null, false); $("resetText").value = ""; $("resetBtn").disabled = true; $("settingsDialog").close(); refreshState(); }
     catch (e) { $("setError").textContent = e.message; }
   };
   document.addEventListener("keydown", (e) => {
@@ -1618,7 +2065,8 @@ async function bootConsole() {
   try {
     [S.config, S.scenarios, S.bursts] = await Promise.all([api("/api/config"), api("/api/scenarios"), api("/api/burst").catch(() => ({}))]);
   } catch (e) { toastError(`Could not reach the SURU API: ${e.message}`); }
-  setMode(S.config.live_available ? "live" : "mock");
+  const qmode = new URLSearchParams(location.search).get("mode");
+  setMode(qmode === "mock" || !S.config.live_available ? "mock" : "live");
   initCallForm();
   await refreshState();
   setInterval(refreshState, 3000);                         // other operators' calls and returning units show up on their own

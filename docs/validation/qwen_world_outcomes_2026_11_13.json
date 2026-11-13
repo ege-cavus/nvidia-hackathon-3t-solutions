@@ -1,0 +1,58 @@
+{
+  "validation_kind": "REAL_QWEN_OUTCOME_ONLY_WITH_MOCK_INITIAL_DISPATCH",
+  "routing": {
+    "mode": "osmnx",
+    "tick_seconds": 60,
+    "fallback_reason": null
+  },
+  "model": "qwen3.6:35b-a3b",
+  "live_assessments": 5,
+  "accepted": 5,
+  "status": "RESOLVED",
+  "spread_events": [
+    {
+      "tick": 6,
+      "rule_id": "station-fire-secondary-node",
+      "outcome": "PREVENTED"
+    }
+  ],
+  "elapsed_seconds": 15.01,
+  "outcomes": [
+    {
+      "tick": 3,
+      "outcome": "effective_work",
+      "work_credit": 1,
+      "accepted": true,
+      "executed_by": "qwen"
+    },
+    {
+      "tick": 4,
+      "outcome": "contained",
+      "work_credit": 1,
+      "accepted": true,
+      "executed_by": "qwen"
+    },
+    {
+      "tick": 5,
+      "outcome": "contained",
+      "work_credit": 1,
+      "accepted": true,
+      "executed_by": "qwen"
+    },
+    {
+      "tick": 6,
+      "outcome": "contained",
+      "work_credit": 1,
+      "accepted": true,
+      "executed_by": "qwen"
+    },
+    {
+      "tick": 7,
+      "outcome": "resolved",
+      "work_credit": 1,
+      "accepted": true,
+      "executed_by": "qwen"
+    }
+  ],
+  "test_scope": "One authored station fire on cached OSM graph. Initial dispatch and arrival stepping used mock agents; only five post-dispatch proposals used real Qwen. No post-dispatch images supplied."
+}

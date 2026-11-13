@@ -90,6 +90,20 @@ assessments/outcomes, and receives authored-report jobs through the normal event
 stream. Its new-call form (outside authored world mode) submits caller JSON with
 unknowns preserved; category and severity come from intake triage.
 
+The latest urban-response local console (8ff3975) is integrated on both `/console`
+and `web/console/`: compact pipeline steps, hover detail, live ticker, inventory
+changes and the hide-map control. The source branch and main remain unchanged.
+For a fresh local Windows run after activating your environment:
+
+```powershell
+.\scripts\run-world-demo.ps1
+```
+
+Open http://localhost:8082/console, click **Dispatch pending reports**, then
+**Advance one minute**. The script defaults to mock agents with the same validated
+proposal path used by Qwen. Add `-Live` after configuring all model endpoints above,
+or `-Autorun` for an accelerated clock. `-Python` can select your venv executable.
+
 For a separately hosted dashboard, set UR_CORS_ORIGINS to the explicit frontend
 origins before starting the API (for example http://localhost:3100). Same-origin
 previews need no CORS setting. The Vercel proxy permits the compact `/ui/world`
@@ -135,6 +149,48 @@ playback does this on its next decision window.
 - Deduplication uses scenario time. A new authored affected node cannot be merged
   into the source node merely because its report describes a similar nearby fire.
 
+## Post-dispatch Qwen effects and reassessment
+
+The API defaults to `UR_WORLD_OUTCOME_MODE=model` in authored-world mode. Qwen
+Outcome uses the same configured Qwen endpoint as Intake, with a separate prompt
+and request context. The model returns `OutcomeProposal` in urban_response/outcomes.py:
+proposal_id, incident_id, node_id, world_version, tick, outcome, work_credit, reason.
+This is a separate internal contract; canonical incident/response JSON is unchanged.
+
+The loop is: move vehicles/receive reports -> collect observations -> Qwen proposal
+-> validate/apply -> spread -> update metrics -> release completed vehicles. It runs
+after dispatch and as the clock advances. A full minute with all required typed
+resources present at both ends permits at most one work credit. The model can
+award or withhold that credit. It must classify the result using work **after**
+its proposed credit, with explicit projections included to prevent off-by-one errors.
+Validated credits reduce severity, cross containment thresholds (stopping spread),
+and eventually resolve the incident and reopen its roads. Extra resources add no
+work bonus. Relevant partial attendance still slows spread under the graph policy,
+without reducing severity or earning work. Model failure grants no work credit;
+the clock, hazard spread and occupied-resource lockouts continue.
+
+Version/tick/node checks reject stale proposals. A unique proposal ID and per-node
+credit guard prevent replay/double work. Requirements and thresholds are authored
+game assumptions; the model cannot rewrite them. Accepted/rejected proposals and
+their evidence persist in SQLite `world_outcomes` and appear in GET /world/state,
+the console's Outcome tab/decision log and response evaluation world_outcome metrics.
+Effect mutation rolls back if its audit write fails. An initial dispatch grade
+never constitutes observed containment or success.
+
+Reassessment runs immediately on changed unit phases (including reinforcements),
+new same-incident caller observations, every on-scene working minute and every
+five transit minutes. Unchanged repeated requests in the same minute are skipped.
+**Reassess response**, POST /world/reassess and POST /ui/world/reassess trigger a
+due assessment without advancing time. Set UR_WORLD_FOLLOW_UPS to the existing
+same_incident_reports.json bundle to schedule those observations; claims remain
+separate from observed world state. Outcome reassessment does not automatically
+ask Nemotron for a new reinforcement dispatch; that is a separate command path.
+
+Set UR_WORLD_OUTCOME_MODE=rules for the deterministic comparison policy. The CLI
+world_demo defaults to model proposals too; use `--outcomes rules` for comparison.
+The legacy ReportDrivenWorld and solo-game prototype retain deterministic rules.
+A future game must evaluate both human and AI worlds with the same outcome policy.
+
 ## Approved images
 
 The default integrated demo is report-only. Existing Cosmos drafts are not
@@ -160,6 +216,6 @@ verification/expanded coverage before using them in a wider-city demonstration.
 Typed work requirements, spread multipliers and resolution thresholds are game
 assumptions, not physical or clinical predictions. The future solo-game prototype
 has not been connected to the backend fleet. This is not operational guidance.
-The existing twelve alternate-caller observations remain a report-runner fixture;
-automatic re-assessment/reinforcement of an already dispatched backend incident
-is separate follow-up work. New spread-node reports do traverse this integration.
+Same-incident caller observations can now trigger outcome reassessment when their
+bundle is configured. Automatic Nemotron reinforcement allocation remains follow-up
+work. New spread-node reports traverse the intake/agency/allocator path.

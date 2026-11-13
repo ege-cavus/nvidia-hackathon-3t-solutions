@@ -1,0 +1,30 @@
+{
+  "source_branch_commit": "8ff3975",
+  "preview": "http://localhost:8082/console",
+  "page_errors": [],
+  "compact_story_visible": true,
+  "ticker_visible": true,
+  "hide_map_control_checked": true,
+  "proposal_visible": true,
+  "canonical_console_copies_match": true,
+  "mock_world_check": {
+    "preview": "http://localhost:8082/console",
+    "page_errors": [],
+    "tick": 5,
+    "cases": 4,
+    "outcome_mode": "model",
+    "proposals": 15,
+    "accepted": 15,
+    "observed_work_by_node": {
+      "CAM_01": 4,
+      "CAM_08": 6,
+      "CAM_13": 5,
+      "CAM_21": 7
+    },
+    "proposal_visible": true
+  },
+  "tests": {
+    "full_suite": "113 passed, 1 skipped, 21 subtests passed",
+    "latest_targeted": "15 passed (world integration, outcome effects, console contract)"
+  }
+}

@@ -46,7 +46,12 @@ async def lifespan(app: FastAPI):
     if scenario:
         if db._conn.execute("SELECT COUNT(*) FROM allocations WHERE released_at IS NULL").fetchone()[0]:
             raise WorldConflict("Use a fresh demo database for world mode; active reservations cannot be reconstructed")
-        db.graph_world = GraphReportWorld(db, scenario)
+        followups = os.getenv("UR_WORLD_FOLLOW_UPS")
+        db.graph_world = (GraphReportWorld(db, scenario, follow_up_path=followups) if followups
+                          else GraphReportWorld(db, scenario))
+        db.graph_world.outcome_mode = os.getenv("UR_WORLD_OUTCOME_MODE", "model")
+        if db.graph_world.outcome_mode not in ("model", "rules"):
+            raise ValueError("UR_WORLD_OUTCOME_MODE must be model or rules")
     state.update(
         settings=settings,
         db=db,
@@ -68,7 +73,7 @@ async def lifespan(app: FastAPI):
                 world = state.get("world")
                 if world is not None and os.getenv("UR_WORLD_AUTORUN", "0") == "1" and not world.inflight:
                     await world.dispatch_due(state["orch"], _world_event)
-                    world.tick()
+                    await world.advance(state["orch"], _world_event)
                     released = world.last_released
                 else:
                     released = db.release_due()
@@ -96,15 +101,18 @@ async def world_conflict(request, error):
 
 async def _world_event(incident_id, name, payload):
     state["feed"].on_job_event(incident_id, name, payload)
-    job_id = f"world-{incident_id}"
+    outcome = name == "world_outcome"
+    job_id = (f"world-outcome-{incident_id}-{payload['evidence']['world_version']}"
+              if outcome else f"world-{incident_id}")
     now = asyncio.get_running_loop().time()
     job = state["jobs"].setdefault(job_id, {"events":[], "done":False, "cond":asyncio.Condition(),
         "incident_id":incident_id, "label":f"Authored report {incident_id}", "started_at":now})
     async with job["cond"]:
         job["events"].append({"event":name, "t":round(now-job["started_at"],2), "data":payload})
-        if name in ("completed","merged","error"):
+        if name in ("completed","merged","error","world_outcome"):
             job["done"] = True
-            job["outcome"] = "error" if name=="error" else "merged" if name=="merged" else "dispatched"
+            job["outcome"] = ("world_updated" if payload.get("accepted") else "outcome_rejected") if outcome else (
+                "error" if name=="error" else "merged" if name=="merged" else "dispatched")
         job["cond"].notify_all()
 
 
@@ -131,9 +139,17 @@ async def world_advance():
     world = state.get("world")
     if world is None:
         raise HTTPException(409, "World mode is not enabled")
-    world.tick()
+    await world.advance(state["orch"], _world_event)
     state["feed"].units_returned(world.last_released)
     return world.snapshot()
+
+
+@app.post("/world/reassess")
+async def world_reassess():
+    world = state.get("world")
+    if world is None or world.outcome_mode != "model":
+        raise WorldConflict("Enable model world outcomes to reassess")
+    return await world.reassess(state["orch"], _world_event)
 
 
 # ---- Access control -------------------------------------------------------------- #
@@ -260,7 +276,9 @@ def console_state():
     return {"incidents": incidents, "inventory": inventory, "fleet": fleet, "personnel": db.personnel_inventory(),
             "stations": db.stations(), "jobs": jobs[-30:],
             "jobs_running": sum(1 for j in state["jobs"].values() if not j["done"]),
-            "world":({"enabled":True, "tick":world.state["tick"], "inflight":world.inflight} if world is not None else {"enabled":False}),
+            "world":({"enabled":True, "tick":world.state["tick"], "inflight":world.inflight,
+                      "outcome_mode":world.outcome_mode,"assessments":world.outcome_events[-20:]}
+                     if world is not None else {"enabled":False}),
             "time_scale": float(os.getenv("UR_TIME_SCALE", "1"))}
 
 
@@ -399,7 +417,10 @@ def reset():
         raise WorldConflict("Finish model decisions before resetting")
     seed(state["db"], force=True)
     if state.get("world") is not None:
-        state["db"].graph_world = GraphReportWorld(state["db"], os.environ["UR_WORLD_SCENARIO"])
+        followups = os.getenv("UR_WORLD_FOLLOW_UPS")
+        state["db"].graph_world = (GraphReportWorld(state["db"], os.environ["UR_WORLD_SCENARIO"],follow_up_path=followups)
+                                  if followups else GraphReportWorld(state["db"], os.environ["UR_WORLD_SCENARIO"]))
+        state["db"].graph_world.outcome_mode = os.getenv("UR_WORLD_OUTCOME_MODE","model")
         state["world"] = state["db"].graph_world
     state["jobs"].clear()
     state["feed"].clear()

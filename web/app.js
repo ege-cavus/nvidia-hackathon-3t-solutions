@@ -339,6 +339,7 @@ function renderDrawer() {
       </div>
     </div>
     ${outcome ? `<p class="muted">World outcome: ${esc(outcome.status)} · containment ${outcome.containment_success ? "achieved" : "pending"} · effective work ${outcome.effective_work_ticks} min. Dispatch assessment is separate.</p>` : ""}
+    ${r?.evaluation?.metrics?.world_outcome?.assessment ? `<p class="muted">Outcome proposal (${esc(r.evaluation.metrics.world_outcome.assessment.executed_by)}): ${esc(r.evaluation.metrics.world_outcome.assessment.accepted ? r.evaluation.metrics.world_outcome.assessment.proposal?.outcome : "rejected")} — ${esc(r.evaluation.metrics.world_outcome.assessment.accepted ? r.evaluation.metrics.world_outcome.assessment.proposal?.reason : r.evaluation.metrics.world_outcome.assessment.error)}</p>` : ""}
     <div class="tabs" role="tablist">${tabs.map(([k, t]) => `<button role="tab" type="button" data-tab="${k}" aria-selected="${ui.tab === k}">${t}</button>`).join("")}</div>
     <div class="d-body">${r || ui.tab === "summary" ? TAB[ui.tab](inc, r, history) : `<p class="empty">The agents are still routing this incident.</p>`}</div>`;
   drawer.querySelector(".d-body").scrollTop = scroll;

@@ -27,6 +27,7 @@ async def run(args):
         try:
             seed(db)
             world=GraphReportWorld(db,scenario)
+            world.outcome_mode=args.outcomes
             db.graph_world=world
             orch=Orchestrator(db,replace(get_settings(),llm_mode="live" if args.live else "mock"))
             async def event(incident_id,name,payload):
@@ -35,7 +36,7 @@ async def run(args):
                                       "agency":payload.get("agency"),"executed_by":payload.get("executed_by")}),flush=True)
             results=await world.dispatch_due(orch,event)
             for _ in range(args.ticks):
-                world.tick()
+                await world.advance(orch,event)
                 results.extend(await world.dispatch_due(orch,event))
             payload={"validation_kind":"LIVE_MODEL_RUN" if args.live else "MOCK_INTEGRATION_RUN",
                      "routing":world.state["routing"], "tick":world.state["tick"],
@@ -56,6 +57,8 @@ if __name__=="__main__":
     parser.add_argument("--scenario",type=Path,default=DEFAULT_SCENARIO)
     parser.add_argument("--node",help="Limit initial reports to one authored node, e.g. CAM_01")
     parser.add_argument("--live",action="store_true")
+    parser.add_argument("--outcomes",choices=("model","rules"),default="model",
+                        help="Validated model proposals (default) or deterministic comparison policy")
     parser.add_argument("--ticks",type=int,default=360)
     parser.add_argument("--output",type=Path,default=Path("demo_output/integrated_world.json"))
     args=parser.parse_args()

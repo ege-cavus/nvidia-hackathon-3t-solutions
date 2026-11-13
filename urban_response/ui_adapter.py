@@ -350,6 +350,11 @@ class EventFeed:
             self.add(incident_id, "Qwen", "EVALUATED",
                      f"Grade {p.get('grade')} ({p.get('score')}/100): {p.get('headline') or p.get('verdict', '')}",
                      {"rationale": "; ".join(p.get("findings", [])), **p}, p.get("executed_by"))
+        elif name == "world_outcome":
+            proposal = p.get("proposal",{})
+            text = (("Applied " + proposal.get("outcome", "") + ": " + proposal.get("reason", ""))
+                    if p.get("accepted") else "Rejected world outcome: " + p.get("error", ""))
+            self.add(incident_id,"Qwen","WORLD_OUTCOME",text,p,p.get("executed_by"))
         elif name == "error":
             self.add(incident_id, "rules", "ERROR", p.get("message", "pipeline error"), p, "rules")
 
@@ -384,6 +389,8 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         if world is None:
             return {"enabled":False}
         return {"enabled":True, "tick":world.state["tick"], "inflight":world.inflight,
+                "outcome_mode":world.outcome_mode, "world_version":world.world_version,
+                "assessments":world.outcome_events[-20:],
                 "active":sum(i["status"]!="RESOLVED" for i in world.state["active_incidents"].values()),
                 "outcomes":{str(case_id):{"status":world.state["active_incidents"][node]["status"],
                     "severity":world.state["active_incidents"][node]["severity"],
@@ -409,8 +416,17 @@ def make_router(state: dict, start_job: Callable, reset: Callable) -> APIRouter:
         world = state.get("world")
         if world is None:
             raise WorldConflict("Authored world is disabled")
-        world.tick()
+        await world.advance(state["orch"],state.get("world_event"))
         state["feed"].units_returned(world.last_released)
+        return world_summary()
+
+    @r.post("/world/reassess")
+    async def reassess_world():
+        from .world import WorldConflict
+        world = state.get("world")
+        if world is None or world.outcome_mode != "model":
+            raise WorldConflict("Enable model world outcomes to reassess")
+        await world.reassess(state["orch"],state.get("world_event"))
         return world_summary()
 
     @r.get("/health")

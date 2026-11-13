@@ -28,7 +28,7 @@ const ALLOWED = [
   /^ui\/incidents\/\d+\/(close|responses)$/,
   /^ui\/units\/[\w%.-]+\/release$/,
   /^ui\/resources\/[\w-]+\/forecast$/,
-  /^ui\/world(\/(dispatch|advance))?$/,
+  /^ui\/world(\/(dispatch|advance|reassess))?$/,
 ];
 
 const json = (status, detail) =>

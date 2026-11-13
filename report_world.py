@@ -289,17 +289,20 @@ class ReportDrivenWorld(SheffieldSim):
                                        "spread_progress":float(self._spread_progress[rule["rule_id"]]),
                                        "parent_incident_id":source["incident_id"],"incident_id":report["incident_id"],"node_id":rule["target_node"]})
 
-    def tick(self, spawn=False):
-        if spawn:raise ValueError("Report-driven world never randomly spawns incidents")
+    def _begin_tick(self):
+        """Move vehicles and receive observations before deciding response effects."""
         self.state["tick"] += 1
         m = self.state["effectiveness_metrics"]
         m["resource_busy_ticks"] += sum(not is_unit_available(u) for u in self.state["resource_db"].values())
         for unit in self.state["resource_db"].values():self._advance_unit(unit)
         self._receive_due_initial()
         self._receive_due_follow_ups()
+
+    def _finish_tick(self):
+        """Apply causal spread after response effects at this same tick."""
+        m = self.state["effectiveness_metrics"]
         for node,incident in list(self.state["active_incidents"].items()):
             if incident["status"] == "RESOLVED":continue
-            self._apply_observed_response(node,incident)
             if self.state["tick"]-incident["spawn_tick"]>7 and not incident["sla_recorded"]:
                 m["sla_missed_count"] += 1;incident["sla_recorded"] = True
         # Responses are applied before spread due at the same tick.
@@ -311,6 +314,14 @@ class ReportDrivenWorld(SheffieldSim):
         m["overall_score"] = effectiveness_score_breakdown(m)["overall_score"]
         self.validate_world_invariants()
         return self.state
+
+    def tick(self, spawn=False):
+        if spawn:raise ValueError("Report-driven world never randomly spawns incidents")
+        self._begin_tick()
+        for node,incident in list(self.state["active_incidents"].items()):
+            if incident["status"] != "RESOLVED":
+                self._apply_observed_response(node,incident)
+        return self._finish_tick()
 
     def export(self, directory):
         directory = Path(directory);directory.mkdir(parents=True,exist_ok=True)
